@@ -2256,3 +2256,14 @@ export function removeSession(sessionId) {
   }
   return false;
 }
+
+/**
+ * Register an active query object for a session (used by persistent daemon runtime).
+ * @param {string} sessionId
+ * @param {object} queryResult
+ */
+export function registerActiveQueryResult(sessionId, queryResult) {
+  if (!sessionId || !queryResult || !activeQueryResults) return false;
+  activeQueryResults.set(sessionId, queryResult);
+  return true;
+}
