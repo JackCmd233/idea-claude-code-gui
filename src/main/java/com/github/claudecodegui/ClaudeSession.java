@@ -269,7 +269,7 @@ public class ClaudeSession {
      * Used for per-tab independent agent selection.
      */
     public CompletableFuture<Void> send(String input, String agentPrompt) {
-        return send(input, null, agentPrompt, null);
+        return send(input, null, agentPrompt, null, null);
     }
 
     /**
@@ -277,7 +277,15 @@ public class ClaudeSession {
      * Used for Codex context injection.
      */
     public CompletableFuture<Void> send(String input, String agentPrompt, List<String> fileTagPaths) {
-        return send(input, null, agentPrompt, fileTagPaths);
+        return send(input, null, agentPrompt, fileTagPaths, null);
+    }
+
+    /**
+     * Send a message with a specific agent prompt, file tags and requested permission mode.
+     * requestedPermissionMode priority: payload > sessionMode > default.
+     */
+    public CompletableFuture<Void> send(String input, String agentPrompt, List<String> fileTagPaths, String requestedPermissionMode) {
+        return send(input, null, agentPrompt, fileTagPaths, requestedPermissionMode);
     }
 
     /**
@@ -285,7 +293,7 @@ public class ClaudeSession {
      * @deprecated Use {@link #send(String, List, String)} with explicit agent prompt instead.
      */
     public CompletableFuture<Void> send(String input, List<Attachment> attachments) {
-        return send(input, attachments, null, null);
+        return send(input, attachments, null, null, null);
     }
 
     /**
@@ -296,7 +304,7 @@ public class ClaudeSession {
      * @param agentPrompt Agent prompt (falls back to global setting if null)
      */
     public CompletableFuture<Void> send(String input, List<Attachment> attachments, String agentPrompt) {
-        return send(input, attachments, agentPrompt, null);
+        return send(input, attachments, agentPrompt, null, null);
     }
 
     /**
@@ -308,6 +316,21 @@ public class ClaudeSession {
      * @param fileTagPaths File tag paths for Codex context injection
      */
     public CompletableFuture<Void> send(String input, List<Attachment> attachments, String agentPrompt, List<String> fileTagPaths) {
+        return send(input, attachments, agentPrompt, fileTagPaths, null);
+    }
+
+    /**
+     * Send a message with attachments, agent prompt, file tags, and a requested permission mode.
+     * The effective mode is resolved with priority:
+     * requestedPermissionMode > sessionMode > default, with codex forced to bypassPermissions.
+     */
+    public CompletableFuture<Void> send(
+        String input,
+        List<Attachment> attachments,
+        String agentPrompt,
+        List<String> fileTagPaths,
+        String requestedPermissionMode
+    ) {
         // Prepare user message
         String normalizedInput = (input != null) ? input.trim() : "";
         Message userMessage = buildUserMessage(normalizedInput, attachments);
@@ -318,6 +341,7 @@ public class ClaudeSession {
         // Save agentPrompt and fileTagPaths for later use
         final String finalAgentPrompt = agentPrompt;
         final List<String> finalFileTagPaths = fileTagPaths;
+        final String finalRequestedPermissionMode = requestedPermissionMode;
 
         // Launch Claude and send message
         return launchClaude().thenCompose(chId -> {
@@ -339,7 +363,15 @@ public class ClaudeSession {
             contextCollector.setAutoOpenFileEnabled(autoOpenFileEnabled);
 
             return contextCollector.collectContext().thenCompose(openedFilesJson ->
-                sendMessageToProvider(chId, userMessage.content, attachments, openedFilesJson, finalAgentPrompt, finalFileTagPaths)
+                sendMessageToProvider(
+                    chId,
+                    userMessage.content,
+                    attachments,
+                    openedFilesJson,
+                    finalAgentPrompt,
+                    finalFileTagPaths,
+                    finalRequestedPermissionMode
+                )
             );
         }).exceptionally(ex -> {
             state.setError(ex.getMessage());
@@ -595,7 +627,8 @@ public class ClaudeSession {
         List<Attachment> attachments,
         JsonObject openedFilesJson,
         String externalAgentPrompt,
-        List<String> fileTagPaths
+        List<String> fileTagPaths,
+        String requestedPermissionMode
     ) {
         // Prefer external agent prompt; fall back to global setting if not provided
         String agentPrompt = externalAgentPrompt;
@@ -609,11 +642,33 @@ public class ClaudeSession {
 
         // Select SDK based on provider
         String currentProvider = state.getProvider();
+        String sessionModeBeforeSend = state.getPermissionMode();
+        String normalizedRequestedMode = normalizeRequestedPermissionMode(requestedPermissionMode);
+        String effectivePermissionMode = resolveEffectivePermissionMode(
+            currentProvider,
+            normalizedRequestedMode,
+            sessionModeBeforeSend
+        );
+
+        LOG.info(
+            "[ModeSync][Backend] provider=" + currentProvider
+                + ", requested=" + (normalizedRequestedMode != null ? normalizedRequestedMode : "(none)")
+                + ", session=" + (sessionModeBeforeSend != null ? sessionModeBeforeSend : "(none)")
+                + ", effective=" + effectivePermissionMode
+        );
 
         if ("codex".equals(currentProvider)) {
-            return sendToCodex(channelId, input, attachments, openedFilesJson, agentPrompt, fileTagPaths);
+            return sendToCodex(
+                channelId,
+                input,
+                attachments,
+                openedFilesJson,
+                agentPrompt,
+                fileTagPaths,
+                effectivePermissionMode
+            );
         } else {
-            return sendToClaude(channelId, input, attachments, openedFilesJson, agentPrompt);
+            return sendToClaude(channelId, input, attachments, openedFilesJson, agentPrompt, effectivePermissionMode);
         }
     }
 
@@ -627,7 +682,8 @@ public class ClaudeSession {
         List<Attachment> attachments,
         JsonObject openedFilesJson,
         String agentPrompt,
-        List<String> fileTagPaths
+        List<String> fileTagPaths,
+        String effectivePermissionMode
     ) {
         CodexMessageHandler handler = new CodexMessageHandler(state, callbackHandler);
 
@@ -640,7 +696,7 @@ public class ClaudeSession {
             state.getSessionId(),
             state.getCwd(),
             attachments,
-            state.getPermissionMode(),
+            effectivePermissionMode,
             state.getModel(),
             agentPrompt,
             state.getReasoningEffort(),
@@ -828,7 +884,8 @@ public class ClaudeSession {
         String input,
         List<Attachment> attachments,
         JsonObject openedFilesJson,
-        String agentPrompt
+        String agentPrompt,
+        String effectivePermissionMode
     ) {
         ClaudeMessageHandler handler = new ClaudeMessageHandler(
             project,
@@ -860,7 +917,7 @@ public class ClaudeSession {
             state.getSessionId(),
             state.getCwd(),
             attachments,
-            state.getPermissionMode(),
+            effectivePermissionMode,
             state.getModel(),
             openedFilesJson,
             agentPrompt,
@@ -889,6 +946,30 @@ public class ClaudeSession {
                 claudeSDKBridge.prewarmDaemonAsync(state.getCwd());
             }
         });
+    }
+
+    private String normalizeRequestedPermissionMode(String mode) {
+        if (mode == null) return null;
+        String trimmed = mode.trim();
+        if (trimmed.isEmpty()) return null;
+        if ("default".equals(trimmed) || "plan".equals(trimmed)
+            || "acceptEdits".equals(trimmed) || "bypassPermissions".equals(trimmed)) {
+            return trimmed;
+        }
+        LOG.warn("[ModeSync][Backend] Invalid requested permissionMode ignored: " + mode);
+        return null;
+    }
+
+    private String resolveEffectivePermissionMode(String provider, String requestedMode, String sessionMode) {
+        // Codex execution is always bypassPermissions to match provider constraints.
+        if ("codex".equals(provider)) {
+            return "bypassPermissions";
+        }
+        if (requestedMode != null) {
+            return requestedMode;
+        }
+        String normalizedSession = normalizeRequestedPermissionMode(sessionMode);
+        return normalizedSession != null ? normalizedSession : "default";
     }
 
     /**
