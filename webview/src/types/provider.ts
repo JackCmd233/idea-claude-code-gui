@@ -34,7 +34,7 @@ export function isValidModelId(id: string): boolean {
   if (!id || typeof id !== 'string') return false;
   const trimmed = id.trim();
   if (trimmed.length === 0 || trimmed.length > 256) return false;
-  return MODEL_ID_PATTERN.test(trimmed);
+  return true;
 }
 
 /**
