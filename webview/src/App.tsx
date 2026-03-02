@@ -1565,12 +1565,9 @@ const App = () => {
     findToolResult,
   });
 
-  // Derive expanded state: auto-expand when content exists, unless user manually collapsed
-  const hasStatusPanelContent = globalTodos.length > 0 || filteredFileChanges.length > 0 || subagents.length > 0;
-  if (!hasStatusPanelContent) {
-    userCollapsedRef.current = false;
-  }
-  const statusPanelExpanded = hasStatusPanelContent && !userCollapsedRef.current;
+  // Derive expanded state only from user preference:
+  // even with no tasks/subagents/file changes, users can still expand the panel.
+  const statusPanelExpanded = !userCollapsedRef.current;
 
   const sessionTitle = useMemo(() => {
     if (customSessionTitle) {
