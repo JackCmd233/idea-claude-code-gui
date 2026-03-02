@@ -251,26 +251,6 @@ MIT
 
 [查看赞助者列表 →](./SPONSORS.md)
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/zfb.jpg" width="200" alt="支付宝">
-      <br>
-      <b>支付宝</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/wx.jpg" width="200" alt="微信">
-      <br>
-      <b>微信</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/paypal.png" width="200" alt="PayPal">
-      <br>
-      <b>PayPal</b>
-    </td>
-  </tr>
-</table>
-
 ---
 
 ## AtomGit
