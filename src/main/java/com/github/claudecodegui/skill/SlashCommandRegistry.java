@@ -1,9 +1,13 @@
 package com.github.claudecodegui.skill;
 
+import com.github.claudecodegui.CodexSkillService;
+import com.github.claudecodegui.util.PlatformUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.diagnostic.Logger;
+import org.snakeyaml.engine.v2.api.Load;
+import org.snakeyaml.engine.v2.api.LoadSettings;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -125,7 +129,7 @@ public final class SlashCommandRegistry {
 
                 for (File subEntry : subEntries) {
                     if (subEntry.isFile() && subEntry.getName().endsWith(".md")
-                            && !subEntry.getName().startsWith(".")) {
+                                && !subEntry.getName().startsWith(".")) {
                         SlashCommand cmd = parseCommandFile(subEntry, namespace);
                         if (cmd != null) {
                             commands.add(cmd);
@@ -158,7 +162,7 @@ public final class SlashCommandRegistry {
         List<SlashCommand> commands = new ArrayList<>();
         for (File entry : entries) {
             if (!entry.isFile() || !entry.getName().endsWith(".md")
-                    || entry.getName().startsWith(".")) {
+                        || entry.getName().startsWith(".")) {
                 continue;
             }
             String baseName = entry.getName().replaceFirst("\\.md$", "");
@@ -176,8 +180,8 @@ public final class SlashCommandRegistry {
     private static SlashCommand parseCommandFile(File mdFile, String namespace) {
         String baseName = mdFile.getName().replaceFirst("\\.md$", "");
         String commandName = namespace != null
-                ? "/" + namespace + ":" + baseName
-                : "/" + baseName;
+                                     ? "/" + namespace + ":" + baseName
+                                     : "/" + baseName;
 
         // Try to extract description from YAML frontmatter
         String description = extractCommandDescription(mdFile.toPath());
@@ -198,10 +202,10 @@ public final class SlashCommandRegistry {
         }
 
         try {
-            org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml(
-                    new org.yaml.snakeyaml.constructor.SafeConstructor(
-                            new org.yaml.snakeyaml.LoaderOptions()));
-            Object parsed = yaml.load(yamlText);
+            LoadSettings settings = LoadSettings.builder().build();
+            Load load = new Load(settings);
+            Object parsed = load.loadFromString(yamlText);
+
             if (parsed instanceof Map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> map = (Map<String, Object>) parsed;
@@ -211,7 +215,7 @@ public final class SlashCommandRegistry {
         } catch (Exception e) {
             LOG.debug("Failed to parse command frontmatter: " + mdPath);
         }
-        return null;
+        return null; // Ensure we always return a value if not found
     }
 
     /**
@@ -219,6 +223,7 @@ public final class SlashCommandRegistry {
      * Claude merge order: built-in → project commands → project skills → personal commands → personal skills.
      * Codex merge order: built-in → prompts.
      * Later entries override earlier ones with the same name (personal > project per Claude docs).
+     *
      * @param provider "claude" or "codex"
      * @param cwd      current working directory (for local skills/commands lookup)
      * @return deduplicated list of slash commands
@@ -229,7 +234,7 @@ public final class SlashCommandRegistry {
         // Step 1: Select built-in commands by provider
         List<SlashCommand> builtins = isCodex ? CODEX_BUILTIN : CLAUDE_BUILTIN;
 
-        String userHome = System.getProperty("user.home");
+        String userHome = PlatformUtils.getHomeDirectory();
 
         List<SlashCommand> globalCmdCommands;
         List<SlashCommand> globalSkillCommands;
@@ -297,4 +302,40 @@ public final class SlashCommandRegistry {
         }
         return new Gson().toJson(array);
     }
+
+    /**
+     * Gets Codex skills as $-prefixed commands for autocomplete.
+     * Derives from CodexSkillService.getAllSkills() to ensure consistent data
+     * with the Skills settings page. Only includes enabled, user-invocable skills.
+     */
+    public static List<SlashCommand> getCodexSkills(String cwd) {
+        JsonObject allSkills = CodexSkillService.getAllSkills(cwd);
+
+        Map<String, SlashCommand> merged = new LinkedHashMap<>();
+        for (String scope : new String[]{"user", "repo"}) {
+            JsonObject scopeSkills = allSkills.getAsJsonObject(scope);
+            if (scopeSkills == null) continue;
+
+            for (String key : scopeSkills.keySet()) {
+                JsonObject skill = scopeSkills.getAsJsonObject(key);
+
+                // Skip disabled skills
+                if (skill.has("enabled") && !skill.get("enabled").getAsBoolean()) {
+                    continue;
+                }
+                // Skip non-user-invocable skills
+                if (skill.has("userInvocable") && !skill.get("userInvocable").getAsBoolean()) {
+                    continue;
+                }
+
+                String name = skill.has("name") ? skill.get("name").getAsString() : "";
+                String desc = skill.has("description") ? skill.get("description").getAsString() : "";
+                if (!name.isEmpty()) {
+                    merged.put("$" + name, new SlashCommand("$" + name, desc));
+                }
+            }
+        }
+        return new ArrayList<>(merged.values());
+    }
+
 }
