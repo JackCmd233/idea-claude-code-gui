@@ -1,6 +1,5 @@
 package com.github.claudecodegui;
 
-import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.LafManagerListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -8,6 +7,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.openapi.wm.WindowManager;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
@@ -33,8 +33,10 @@ public class DetachedChatFrame extends JFrame {
     private final ClaudeChatWindow chatWindow;
     private final String originalTabName;
     private final int originalTabIndex;
-    private JComponent originalContent;
+    private final JComponent originalContent;
+    private JPanel toolbar;
     private MessageBusConnection themeBusConnection;
+    private volatile boolean disposed = false;
 
     /**
      * Create a detached chat window from an existing Content.
@@ -90,7 +92,7 @@ public class DetachedChatFrame extends JFrame {
         JPanel mainPanel = new JPanel(new BorderLayout());
 
         // Add toolbar at the top
-        JPanel toolbar = createToolbar();
+        toolbar = createToolbar();
         mainPanel.add(toolbar, BorderLayout.NORTH);
 
         // Add chat content in the center
@@ -98,9 +100,17 @@ public class DetachedChatFrame extends JFrame {
 
         setContentPane(mainPanel);
 
-        // Set window size and position
+        // Set window size and position relative to IDE window to avoid overlap
         setSize(1200, 800);
-        setLocationRelativeTo(null); // Center on screen
+        Frame ideFrame = WindowManager.getInstance().getFrame(project);
+        if (ideFrame != null) {
+            // Offset from IDE window with stacking offset based on existing detached count
+            int offset = DetachedWindowManager.getDetachedWindowCount(project) * 30;
+            Point ideLocation = ideFrame.getLocation();
+            setLocation(ideLocation.x + 50 + offset, ideLocation.y + 50 + offset);
+        } else {
+            setLocationRelativeTo(null);
+        }
 
         // Make window resizable
         setResizable(true);
@@ -110,16 +120,16 @@ public class DetachedChatFrame extends JFrame {
      * Create the toolbar with action buttons.
      */
     private JPanel createToolbar() {
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        toolbar.setBorder(JBUI.Borders.empty(5));
+        JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        toolbarPanel.setBorder(JBUI.Borders.empty(5));
 
         // Reattach button
         JButton reattachBtn = new JButton(ClaudeCodeGuiBundle.message("detachedWindow.reattach"));
         reattachBtn.setToolTipText(ClaudeCodeGuiBundle.message("detachedWindow.reattach.tooltip"));
         reattachBtn.addActionListener(e -> reattachToToolWindow());
-        toolbar.add(reattachBtn);
+        toolbarPanel.add(reattachBtn);
 
-        return toolbar;
+        return toolbarPanel;
     }
 
     /**
@@ -155,18 +165,11 @@ public class DetachedChatFrame extends JFrame {
     private void updateThemeColors() {
         if (!isDisplayable()) return;
 
-        getContentPane().setBackground(UIUtil.getPanelBackground());
-
-        // Update toolbar background
-        Container contentPane = getContentPane();
-        if (contentPane instanceof JPanel) {
-            for (Component comp : ((JPanel) contentPane).getComponents()) {
-                if (comp instanceof JPanel) {
-                    comp.setBackground(UIUtil.getPanelBackground());
-                }
-            }
+        Color bg = UIUtil.getPanelBackground();
+        getContentPane().setBackground(bg);
+        if (toolbar != null) {
+            toolbar.setBackground(bg);
         }
-
         getContentPane().repaint();
     }
 
@@ -247,13 +250,13 @@ public class DetachedChatFrame extends JFrame {
                 contentManager.setSelectedContent(content);
 
                 // Show the tool window
-                toolWindow.show(null);
+                toolWindow.show();
 
                 // Revalidate and repaint to ensure proper rendering
                 originalContent.revalidate();
                 originalContent.repaint();
 
-                // Unregister from DetachedWindowManager
+                // Unregister from DetachedWindowManager before disposing the frame
                 DetachedWindowManager.unregisterDetached(project, chatWindow.getSessionId());
 
                 // Close this window
@@ -314,6 +317,9 @@ public class DetachedChatFrame extends JFrame {
 
     @Override
     public void dispose() {
+        if (disposed) return;
+        disposed = true;
+
         LOG.info("[DetachedChatFrame] Disposing window: " + originalTabName);
 
         // Disconnect theme change listener

@@ -39,27 +39,27 @@ public class DetachTabAction extends AnAction implements DumbAware {
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project project = e.getProject();
         if (project == null) {
-            LOG.error("[DetachTabAction] Project is null");
+            LOG.warn("[DetachTabAction] Project is null");
             return;
         }
 
         ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("CCG");
         if (toolWindow == null) {
-            LOG.error("[DetachTabAction] Tool window not found");
+            LOG.warn("[DetachTabAction] Tool window not found");
             return;
         }
 
         ContentManager contentManager = toolWindow.getContentManager();
         Content selectedContent = contentManager.getSelectedContent();
         if (selectedContent == null) {
-            LOG.error("[DetachTabAction] No tab selected");
+            LOG.warn("[DetachTabAction] No tab selected");
             return;
         }
 
         // Get the ClaudeChatWindow associated with this content
         ClaudeChatWindow chatWindow = ClaudeSDKToolWindow.getChatWindowForContent(selectedContent);
         if (chatWindow == null) {
-            LOG.error("[DetachTabAction] Cannot find ClaudeChatWindow for content: " + selectedContent.getDisplayName());
+            LOG.warn("[DetachTabAction] Cannot find ClaudeChatWindow for content: " + selectedContent.getDisplayName());
             Messages.showErrorDialog(
                     project,
                     ClaudeCodeGuiBundle.message("action.detachTab.error.noChatWindow"),
@@ -91,8 +91,8 @@ public class DetachTabAction extends AnAction implements DumbAware {
             return;
         }
 
-        // Perform the detach operation
-        detachTab(project, contentManager, selectedContent);
+        // Perform the detach operation, passing chatWindow to avoid re-lookup race condition
+        detachTab(project, contentManager, selectedContent, chatWindow);
     }
 
     /**
@@ -101,11 +101,17 @@ public class DetachTabAction extends AnAction implements DumbAware {
      * @param project        The project
      * @param contentManager The content manager
      * @param content        The content to detach
+     * @param chatWindow     The chat window associated with the content (resolved in actionPerformed)
      */
     private void detachTab(@NotNull Project project,
                            @NotNull ContentManager contentManager,
-                           @NotNull Content content) {
+                           @NotNull Content content,
+                           @NotNull ClaudeChatWindow chatWindow) {
         ApplicationManager.getApplication().invokeLater(() -> {
+            // Mark content as detaching to prevent contentRemoved listener
+            // from disposing the ClaudeChatWindow or showing confirmation dialog.
+            // Use try-finally to guarantee the flag is always cleared.
+            ClaudeSDKToolWindow.markContentAsDetaching(content);
             try {
                 // Verify content is still in the ContentManager (may have been removed between
                 // actionPerformed and invokeLater execution)
@@ -117,17 +123,6 @@ public class DetachTabAction extends AnAction implements DumbAware {
                 String tabName = content.getDisplayName();
                 LOG.info("[DetachTabAction] Detaching tab: " + tabName);
 
-                // Get the ClaudeChatWindow before removing content
-                ClaudeChatWindow chatWindow = ClaudeSDKToolWindow.getChatWindowForContent(content);
-                if (chatWindow == null) {
-                    LOG.error("[DetachTabAction] ClaudeChatWindow is null");
-                    return;
-                }
-
-                // Mark content as detaching to prevent contentRemoved listener
-                // from disposing the ClaudeChatWindow or showing confirmation dialog
-                ClaudeSDKToolWindow.markContentAsDetaching(content);
-
                 // Create the detached frame BEFORE removing content
                 // This ensures the chatWindow.getContent() is still properly attached
                 DetachedChatFrame detachedFrame = new DetachedChatFrame(project, content);
@@ -137,8 +132,7 @@ public class DetachTabAction extends AnAction implements DumbAware {
                 // disposing the chat window or updating tab state
                 contentManager.removeContent(content, false);
 
-                // Clear the detaching flag and clean up content mapping
-                ClaudeSDKToolWindow.unmarkContentAsDetaching(content);
+                // Clean up content mapping
                 chatWindow.setParentContent(null);
 
                 // Register the detached window
@@ -156,13 +150,13 @@ public class DetachTabAction extends AnAction implements DumbAware {
 
             } catch (Exception ex) {
                 LOG.error("[DetachTabAction] Error detaching tab", ex);
-                // Clean up detaching flag in case of error
-                ClaudeSDKToolWindow.unmarkContentAsDetaching(content);
                 Messages.showErrorDialog(
                         project,
                         ClaudeCodeGuiBundle.message("action.detachTab.error.failed") + ": " + ex.getMessage(),
                         ClaudeCodeGuiBundle.message("action.detachTab.error.title")
                 );
+            } finally {
+                ClaudeSDKToolWindow.unmarkContentAsDetaching(content);
             }
         });
     }
