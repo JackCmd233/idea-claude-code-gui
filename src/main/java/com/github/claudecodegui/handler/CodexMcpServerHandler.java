@@ -21,6 +21,7 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
     private static final String[] SUPPORTED_TYPES = {
         "get_codex_mcp_servers",
         "get_codex_mcp_server_status",
+        "get_codex_mcp_server_tools",
         "add_codex_mcp_server",
         "update_codex_mcp_server",
         "delete_codex_mcp_server",
@@ -48,6 +49,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
                 return true;
             case "get_codex_mcp_server_status":
                 handleGetMcpServerStatus();
+                return true;
+            case "get_codex_mcp_server_tools":
+                handleGetMcpServerTools(content);
                 return true;
             case "add_codex_mcp_server":
                 handleAddMcpServer(content);
@@ -119,6 +123,66 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
                 callJavaScript("window.updateCodexMcpServerStatus", escapeJs("[]"));
             });
         }
+    }
+
+    /**
+     * 获取指定 Codex MCP 服务器的工具列表
+     */
+    private void handleGetMcpServerTools(String content) {
+        try {
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(content, JsonObject.class);
+            if (json == null || !json.has("serverId")) {
+                sendToolsError("", "Missing required field: serverId", gson);
+                return;
+            }
+            String serverId = json.get("serverId").getAsString();
+
+            JsonObject targetServer = null;
+            List<JsonObject> servers = codexMcpServerManager.getMcpServers();
+            for (JsonObject server : servers) {
+                if (server.has("id") && serverId.equals(server.get("id").getAsString())) {
+                    targetServer = server;
+                    break;
+                }
+            }
+
+            if (targetServer == null || !targetServer.has("server") || !targetServer.get("server").isJsonObject()) {
+                sendToolsError(serverId, "Server not found or invalid config: " + serverId, gson);
+                return;
+            }
+
+            JsonObject serverConfig = targetServer.getAsJsonObject("server");
+            LOG.info("[CodexMcpServerHandler] Getting tools for Codex MCP server: " + serverId);
+
+            context.getCodexSDKBridge().getMcpServerTools(serverId, serverConfig)
+                .thenAccept(result -> {
+                    String resultJson = gson.toJson(result);
+                    ApplicationManager.getApplication().invokeLater(() ->
+                        callJavaScript("window.updateMcpServerTools", escapeJs(resultJson))
+                    );
+                })
+                .exceptionally(e -> {
+                    LOG.error("[CodexMcpServerHandler] Failed to get MCP server tools: " + e.getMessage(), e);
+                    sendToolsError(serverId, e.getMessage(), gson);
+                    return null;
+                });
+        } catch (Exception e) {
+            LOG.error("[CodexMcpServerHandler] Failed to get MCP server tools: " + e.getMessage(), e);
+            Gson gson = new Gson();
+            sendToolsError("", e.getMessage(), gson);
+        }
+    }
+
+    private void sendToolsError(String serverId, String errorMessage, Gson gson) {
+        JsonObject errorResult = new JsonObject();
+        errorResult.addProperty("serverId", serverId != null ? serverId : "");
+        errorResult.addProperty("error", errorMessage != null ? errorMessage : "Unknown error");
+        errorResult.add("tools", new com.google.gson.JsonArray());
+        String json = gson.toJson(errorResult);
+        ApplicationManager.getApplication().invokeLater(() ->
+            callJavaScript("window.updateMcpServerTools", escapeJs(json))
+        );
     }
 
     /**

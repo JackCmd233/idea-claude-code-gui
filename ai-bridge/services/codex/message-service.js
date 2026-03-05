@@ -20,6 +20,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { getRealHomeDir } from '../../utils/path-utils.js';
+import { getMcpServerTools as getMcpServerToolsImpl } from '../claude/mcp-status/index.js';
 
 // SDK cache
 let codexSdk = null;
@@ -997,6 +998,109 @@ export async function sendMessage(
     console.error('[SEND_ERROR]', JSON.stringify(errorPayload));
     console.log(JSON.stringify(errorPayload));
   }
+}
+
+/**
+ * 获取 Codex MCP 服务器工具列表。
+ * 复用 mcp-status-service 的探测逻辑，避免重复实现协议握手。
+ *
+ * @param {string} serverId
+ * @param {Object} rawServerConfig
+ */
+export async function getMcpServerTools(serverId, rawServerConfig) {
+  try {
+    if (!serverId) {
+      const invalid = {
+        success: false,
+        serverId: '',
+        error: 'Missing serverId',
+        tools: []
+      };
+      console.log('[MCP_SERVER_TOOLS]' + JSON.stringify(invalid));
+      console.log(JSON.stringify(invalid));
+      return;
+    }
+
+    if (!rawServerConfig || typeof rawServerConfig !== 'object') {
+      const invalid = {
+        success: false,
+        serverId,
+        error: 'Missing serverConfig',
+        tools: []
+      };
+      console.log('[MCP_SERVER_TOOLS]' + JSON.stringify(invalid));
+      console.log(JSON.stringify(invalid));
+      return;
+    }
+
+    const serverConfig = normalizeCodexMcpConfig(rawServerConfig);
+    const toolsResult = await getMcpServerToolsImpl(serverId, serverConfig);
+    const tools = Array.isArray(toolsResult?.tools) ? toolsResult.tools : [];
+    const hasError = !!toolsResult?.error;
+
+    const result = {
+      success: !hasError || tools.length > 0,
+      serverId,
+      serverName: toolsResult?.name || serverId,
+      tools,
+      error: toolsResult?.error || null
+    };
+
+    const resultJson = JSON.stringify(result);
+    console.log('[MCP_SERVER_TOOLS]' + resultJson);
+    console.log(resultJson);
+  } catch (error) {
+    const errorResult = {
+      success: false,
+      serverId: serverId || '',
+      error: error?.message || String(error),
+      tools: []
+    };
+    const resultJson = JSON.stringify(errorResult);
+    console.log('[MCP_SERVER_TOOLS]' + resultJson);
+    console.log(resultJson);
+  }
+}
+
+/**
+ * 将 Codex 配置字段名转换为 mcp-status-service 可识别的格式。
+ *
+ * @param {Object} raw
+ * @returns {Object}
+ */
+function normalizeCodexMcpConfig(raw) {
+  const normalized = { ...raw };
+  const type = normalized.type || (normalized.url ? 'http' : 'stdio');
+  normalized.type = type;
+
+  // Codex: http_headers -> mcp-status: headers
+  if (!normalized.headers && normalized.http_headers && typeof normalized.http_headers === 'object') {
+    normalized.headers = { ...normalized.http_headers };
+  }
+
+  // Codex: env_http_headers（值是环境变量名）-> headers（解析后的值）
+  if (normalized.env_http_headers && typeof normalized.env_http_headers === 'object') {
+    const fromEnv = {};
+    for (const [headerName, envName] of Object.entries(normalized.env_http_headers)) {
+      if (typeof envName === 'string') {
+        const envValue = process.env[envName];
+        if (envValue) {
+          fromEnv[headerName] = envValue;
+        }
+      }
+    }
+    normalized.headers = { ...(normalized.headers || {}), ...fromEnv };
+  }
+
+  // Codex: bearer_token_env_var -> Authorization header
+  if (normalized.bearer_token_env_var && typeof normalized.bearer_token_env_var === 'string') {
+    const token = process.env[normalized.bearer_token_env_var];
+    if (token && !(normalized.headers && normalized.headers.Authorization)) {
+      normalized.headers = { ...(normalized.headers || {}), Authorization: `Bearer ${token}` };
+    }
+  }
+
+  return normalized;
 }
 
 /**

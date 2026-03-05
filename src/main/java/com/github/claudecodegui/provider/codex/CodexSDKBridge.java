@@ -511,6 +511,164 @@ public class CodexSDKBridge extends BaseSDKBridge {
         return new ArrayList<>();
     }
 
+    /**
+     * 获取指定 Codex MCP 服务器的工具列表。
+     */
+    public CompletableFuture<JsonObject> getMcpServerTools(String serverId, JsonObject serverConfig) {
+        return CompletableFuture.supplyAsync(() -> {
+            Process process = null;
+            long startTime = System.currentTimeMillis();
+            LOG.info("[CodexMcpTools] Starting getMcpServerTools, serverId=" + serverId);
+
+            try {
+                String node = nodeDetector.findNodeExecutable();
+                File bridgeDir = getDirectoryResolver().findSdkDir();
+                if (bridgeDir == null || !bridgeDir.exists()) {
+                    JsonObject errorResult = new JsonObject();
+                    errorResult.addProperty("serverId", serverId);
+                    errorResult.addProperty("error", "Bridge directory not ready");
+                    errorResult.add("tools", new JsonArray());
+                    return errorResult;
+                }
+
+                JsonObject stdinInput = new JsonObject();
+                stdinInput.addProperty("serverId", serverId != null ? serverId : "");
+                if (serverConfig != null) {
+                    stdinInput.add("serverConfig", serverConfig);
+                } else {
+                    stdinInput.add("serverConfig", new JsonObject());
+                }
+                String stdinJson = gson.toJson(stdinInput);
+
+                List<String> command = new ArrayList<>();
+                command.add(node);
+                command.add(new File(bridgeDir, CHANNEL_SCRIPT).getAbsolutePath());
+                command.add("codex");
+                command.add("getMcpServerTools");
+
+                ProcessBuilder pb = new ProcessBuilder(command);
+                pb.directory(bridgeDir);
+                pb.redirectErrorStream(true);
+                envConfigurator.updateProcessEnvironment(pb, node);
+                pb.environment().put("CODEX_USE_STDIN", "true");
+
+                process = pb.start();
+                processManager.registerProcess("__codex_mcp_tools__", process);
+                final Process finalProcess = process;
+
+                try (java.io.OutputStream stdin = process.getOutputStream()) {
+                    stdin.write(stdinJson.getBytes(StandardCharsets.UTF_8));
+                    stdin.flush();
+                }
+
+                final boolean[] found = {false};
+                final boolean[] readerDone = {false};
+                final String[] toolsJson = {null};
+                final StringBuilder output = new StringBuilder();
+
+                Thread readerThread = new Thread(() -> {
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(finalProcess.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while (!found[0] && (line = reader.readLine()) != null) {
+                            output.append(line).append("\n");
+                            if (line.startsWith("[MCP_SERVER_TOOLS]")) {
+                                toolsJson[0] = line.substring("[MCP_SERVER_TOOLS]".length()).trim();
+                                found[0] = true;
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        LOG.debug("[CodexMcpTools] Reader thread exception: " + e.getMessage());
+                    } finally {
+                        readerDone[0] = true;
+                    }
+                });
+                readerThread.start();
+
+                long deadline = System.currentTimeMillis() + 65000;
+                while (!found[0] && !readerDone[0] && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(100);
+                }
+
+                long elapsed = System.currentTimeMillis() - startTime;
+                if (process.isAlive()) {
+                    PlatformUtils.terminateProcess(process);
+                }
+
+                if (found[0] && toolsJson[0] != null && !toolsJson[0].isEmpty()) {
+                    try {
+                        JsonObject result = gson.fromJson(toolsJson[0], JsonObject.class);
+                        LOG.info("[CodexMcpTools] Got tools for " + serverId + " in " + elapsed + "ms");
+                        return result;
+                    } catch (Exception e) {
+                        LOG.warn("[CodexMcpTools] Failed to parse MCP tools JSON: " + e.getMessage());
+                    }
+                }
+
+                String outputStr = output.toString().trim();
+                String jsonStr = extractLastJsonLine(outputStr);
+                if (jsonStr != null) {
+                    try {
+                        JsonObject jsonResult = gson.fromJson(jsonStr, JsonObject.class);
+                        if (jsonResult != null && jsonResult.has("success")) {
+                            return jsonResult;
+                        }
+                    } catch (Exception e) {
+                        LOG.debug("[CodexMcpTools] Fallback JSON parse failed: " + e.getMessage());
+                    }
+                }
+
+                JsonObject errorResult = new JsonObject();
+                errorResult.addProperty("serverId", serverId);
+                errorResult.addProperty("error", "Failed to get tools list");
+                errorResult.add("tools", new JsonArray());
+                return errorResult;
+            } catch (Exception e) {
+                LOG.error("[CodexMcpTools] Exception: " + e.getMessage(), e);
+                JsonObject errorResult = new JsonObject();
+                errorResult.addProperty("serverId", serverId);
+                errorResult.addProperty("error", e.getMessage());
+                errorResult.add("tools", new JsonArray());
+                return errorResult;
+            } finally {
+                if (process != null) {
+                    try {
+                        if (process.isAlive()) {
+                            PlatformUtils.terminateProcess(process);
+                        }
+                    } finally {
+                        processManager.unregisterProcess("__codex_mcp_tools__", process);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 从多行输出中提取最后一段 JSON 对象文本。
+     */
+    private String extractLastJsonLine(String outputStr) {
+        if (outputStr == null || outputStr.isEmpty()) {
+            return null;
+        }
+        String[] lines = outputStr.split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            if (line.startsWith("{") && line.endsWith("}")) {
+                return line;
+            }
+        }
+        if (outputStr.startsWith("{") && outputStr.endsWith("}")) {
+            return outputStr;
+        }
+        int jsonStart = outputStr.indexOf("{");
+        if (jsonStart != -1) {
+            return outputStr.substring(jsonStart);
+        }
+        return null;
+    }
+
     // ============================================================================
     // Utility methods
     // ============================================================================
