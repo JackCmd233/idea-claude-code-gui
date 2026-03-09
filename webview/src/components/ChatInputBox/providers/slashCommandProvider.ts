@@ -13,6 +13,7 @@ const HIDDEN_COMMANDS = new Set([
   '/release-notes',
   '/security-review',
   '/todo',
+  '/doctor',
 ]);
 
 /**
@@ -63,6 +64,7 @@ export function resetSlashCommandsState() {
 interface SDKSlashCommand {
   name: string;
   description?: string;
+  source?: string;
 }
 
 export function setupSlashCommandsCallback() {
@@ -83,7 +85,7 @@ export function setupSlashCommandsCallback() {
             commands = sdkCommands.map(cmd => ({
               id: cmd.name.replace(/^\//, ''),
               label: cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`,
-              description: cmd.description || '',
+              description: formatCommandDescription(cmd.description || '', cmd.source),
               category: getCategoryFromCommand(cmd.name),
             }));
           } else if (typeof parsed[0] === 'string') {
@@ -231,6 +233,13 @@ function getCategoryFromCommand(name: string): string {
   if (lowerName.includes('speckit')) return 'speckit';
   if (lowerName.includes('cli')) return 'cli';
   return 'user';
+}
+
+function formatCommandDescription(description: string, source?: string): string {
+  if (!source) return description;
+  const suffix = `[${source}]`;
+  if (!description) return suffix;
+  return `${description} ${suffix}`;
 }
 
 function filterCommands(commands: CommandItem[], query: string): CommandItem[] {

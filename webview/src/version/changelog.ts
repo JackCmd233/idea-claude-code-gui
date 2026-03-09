@@ -13,6 +13,218 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: '0.2.6',
+    date: '2026-03-05',
+    content: {
+      en: `✨ Features
+- Support pasting clipboard images in chat input: convert clipboard image data to base64 PNG, dispatch to webview and add as attachment
+- Add subscription tutorial dialog for Claude and Codex providers: tabbed step-by-step instructions with code block copy, i18n for 8 languages
+- Align slash command scanning with CLI behavior: plugin namespace prefixing, recursive directory scanning with SKILL.md detection, marketplace manifest fallback (#579) #gadfly3173
+- Add configurable "play sound only when IDE unfocused" setting (#583) #PaulGiletich
+
+🐛 Fixes
+- Gate Write tool with permission check in plan mode: add Write to permission check branch, add findProjectByPath fallback and retry logic (#580) #gadfly3173
+- Align token usage display with CLI behavior: reset per-turn accumulator on message_start, emit final usage before STREAM_END, show token info in status bar (#578) #gadfly3173
+- Fix token usage display in streaming and non-streaming modes: fix EDT violation, avoid duplicate updates, add monotonic increase check
+- Offload MCP server I/O to background threads: CompletableFuture.runAsync, 5-second timeout for command availability check
+- Harden plugin command scanning with depth limit and path safety
+- Address code review issues: GSON encoding for base64 JS injection prevention, fix i18n condition checks, replace hardcoded colors with theme variables
+- Normalize sound config response format and replace inline style with CSS Module class
+
+🔧 Improvements
+- Refactor tool block collapse UI: all tools with params collapsible, chevron icon with CSS accordion animation
+- Add CSS variables for notice-box colors with dark/light theme support, responsive layout for usage tabs
+- Fix CSS class naming collision in usage stats, change default date range from 30d to 7d`,
+      zh: `✨ Features
+- 支持在聊天输入框粘贴剪贴板图片：剪贴板图片数据转换为 base64 PNG，分发到 webview 作为附件
+- 新增 Claude 和 Codex 订阅教程对话框：分标签页操作说明，代码块复制，8 种语言国际化
+- 对齐斜杠命令扫描与 CLI 行为：插件命名空间前缀、递归目录扫描支持 SKILL.md 检测、市场清单回退 (#579) #gadfly3173
+- 新增 "仅在 IDE 失焦时播放提示音" 配置项 (#583) #PaulGiletich
+
+🐛 Fixes
+- 修复 Plan 模式下 Write 工具权限检查：将 Write 加入权限检查分支，添加 findProjectByPath 回退和重试逻辑 (#580) #gadfly3173
+- 修复 Token 用量显示对齐 CLI 行为：message_start 时重置累计器，STREAM_END 前发送最终用量，状态栏显示 Token 信息 (#578) #gadfly3173
+- 修复流式和非流式模式下 Token 用量显示：修复 EDT 线程违规，避免重复更新，添加单调递增检查
+- MCP 服务器 I/O 操作移至后台线程：CompletableFuture.runAsync，命令检查添加 5 秒超时
+- 加固插件命令扫描安全：深度限制和路径安全防护
+- 修复代码审查中安全和质量问题：GSON 编码防 JS 注入，修复 i18n 条件检查，硬编码颜色替换为主题变量
+- 规范化声音配置响应格式，内联样式替换为 CSS Module 类
+
+🔧 Improvements
+- 重构工具块折叠 UI：所有含参数的工具可折叠，箭头图标和 CSS 手风琴动画
+- 为 notice-box 颜色添加 CSS 变量，支持深色/浅色主题，窄视口响应式布局
+- 修复使用统计 CSS 类名冲突，默认日期范围从 30 天改为 7 天`,
+    },
+  },
+  {
+    version: '0.2.5',
+    date: '2026-03-04',
+    content: {
+      en: `✨ Features
+- Tab detach to floating window: detach chat tabs into independent floating windows for multi-window parallel conversations (#564) #hpstream
+- Register IDEA keyboard shortcuts for chat tool window: Ctrl+C/X/V/Enter, right-click context menu, clipboard handler via JS bridge (#541) #gadfly3173
+- Persist chat input attachments across view switches: save/restore via localStorage with 2MB limit (#542) #hpstream
+- Support agent tool type and improve task block UI: display actual tool name, expand/collapse chevron
+- Add SDK update functionality with uninstall-reinstall strategy and progress feedback
+- Increase Codex maxTurns from 20 to 200 for long-running tasks
+
+🐛 Fixes
+- Accumulate streaming token usage from message_start and message_delta events (#559) #gadfly3173
+- Preserve Node.js version cache when new IDEA window opens (#562) #gadfly3173
+- Support Ctrl+C/X/V in native input and textarea elements (#560) #gadfly3173
+- Defer JCEF browser creation to avoid service initialization conflict (#569) #gadfly3173
+- Replace type assertions with runtime type checks to prevent crashes from MCP tool calls (#567) #gadfly3173
+- Prevent UI freeze when opening settings on macOS in Codex mode: singleton NodeDetector, async handler offloading, in-flight dedup (#543) #gadfly3173
+- Restore Claude slash-command skill discovery for plugin skills: multi-directory traversal, plugin manifest resolution, context-aware filtering (#551) #gadfly3173
+- Harden skill discovery against path traversal and resource exhaustion: plugin ID validation, traversal depth limits, YAML alias limits
+- Resolve race condition in Node.js path caching during manual configuration
+- Improve async robustness and fix stale closure in DependencySection: 30s timeout, binary validation, CompletableFuture tracking
+- Harden WebView bridge security and context menu accessibility: JS function name validation, extended string escaping, clipboard rate limiting, ARIA roles
+- Fix detached window issues: memory leak, race condition, double dispose guards (#564)
+
+🔧 Improvements
+- Optimize SVG icon with CSS classes and simplified paths
+- Stabilize attachment callbacks with useCallback
+- Replace remote banner image with local asset`,
+      zh: `✨ Features
+- Tab 分离到浮动窗口：将聊天标签页分离为独立浮动窗口，支持多窗口跨屏幕并行对话 (#564) #hpstream
+- 注册 IDEA 键盘快捷键到聊天工具窗口：Ctrl+C/X/V/Enter、右键上下文菜单、JS 桥接剪贴板读写 (#541) #gadfly3173
+- 切换页面后保留输入框图片附件：localStorage 保存/恢复，2MB 大小限制 (#542) #hpstream
+- 支持 agent 工具类型并改进任务块 UI：显示实际工具名，展开/折叠箭头图标
+- 新增 SDK 更新功能（卸载后重装策略），支持进度反馈
+- Codex maxTurns 从 20 提升到 200，支持长时间任务
+
+🐛 Fixes
+- 修复流式 Token 用量累计：正确累计 message_start 和 message_delta 事件中的 Token (#559) #gadfly3173
+- 修复新 IDEA 窗口打开时 Node.js 版本缓存丢失 (#562) #gadfly3173
+- 修复原生 input/textarea 中 Ctrl+C/X/V 不工作 (#560) #gadfly3173
+- 修复 JCEF 浏览器创建时服务初始化冲突 (#569) #gadfly3173
+- 修复类型断言导致 MCP 工具调用崩溃，改用运行时类型检查 (#567) #gadfly3173
+- 修复 macOS 下 Codex 模式打开设置时 UI 冻结：NodeDetector 单例共享缓存、异步化、并发去重 (#543) #gadfly3173
+- 恢复 Claude 斜杠命令对插件 Skills 的发现：多目录遍历、插件清单解析、上下文感知过滤 (#551) #gadfly3173
+- 加固 Skill 发现路径遍历和资源耗尽防护：插件 ID 验证、遍历深度限制、YAML 别名限制
+- 修复手动配置时 Node.js 路径缓存竞态条件
+- 改进异步健壮性并修复 DependencySection 闭包过期：30 秒超时、二进制名验证、CompletableFuture 追踪
+- 加固 WebView 桥接安全和上下文菜单无障碍：JS 函数名验证、扩展字符串转义、剪贴板限流、ARIA 角色
+- 修复浮动窗口问题：内存泄漏、竞态条件、双重销毁守卫 (#564)
+
+🔧 Improvements
+- 优化 SVG 图标：CSS 类和简化路径
+- useCallback 稳定附件回调，避免不必要重渲染
+- 用本地资源替换远程 Banner 图片`,
+    },
+  },
+  {
+    version: '0.2.4',
+    date: '2026-03-02',
+    content: {
+      en: `✨ Features
+- Replace remote SDK slash command fetching with fully local registry: parse SKILL.md frontmatter via SnakeYAML, scan personal and project skill directories, push commands on session creation and provider switch #gadfly3173
+- Add Codex skills support with multi-level directory scanning, $ prefix invocation, config.toml enable/disable integration, and dual-mode UI #gadfly3173
+- Improve process lifecycle and resource cleanup: tab disposal handler for daemon shutdown, forceful kill of unresponsive daemons, proper bridge cleanup in all paths
+- Add Qwen and OpenRouter as new provider presets with i18n translations for 8 languages
+- Highlight auto mode selector in orange as visual permission warning cue
+- Add security notice to provider dialog and estimate disclaimer to usage statistics
+
+🐛 Fixes
+- Resolve real OS home directory to bypass IDEA's user.home override: read USERPROFILE/HOME env vars, replace all 35 direct calls across 22 files, add checkstyle enforcement #gadfly3173
+- Prevent stale loading panel blocking error UI on Node.js detection failure #gadfly3173
+- Resolve permission mode state desync between frontend and backend: unified push/pull flow with priority rule (payload > session > default) #gadfly3173
+- Apply date range filter on server side for usage statistics (#534) #gadfly3173
+- Fix tab title management: prevent manual rename overwrite by AI status, fix double ellipsis #Olexandr1904
+- Sync permission mode state in reused daemon runtime hooks
+- Decouple status panel expanded state from content presence
+- Remove model ID format regex restriction for third-party providers
+- Allow symbolic links in Codex skill directory scanning
+- Harden input validation: path traversal prevention, directory whitelist, permission mode whitelist, config dropdown scroll
+
+🔧 Improvements
+- Extract token usage utilities into dedicated TokenUsageUtils class #gadfly3173
+- Unify permission mode validation across frontend and backend with shared constants
+- Replace alert dialogs with toast notifications and inline feedback
+- Remove useUsageStats hook (no-op after polling removal) #gadfly3173
+- Harden Codex skills security: YAML parser DoS limits, path traversal checks, LoadingState tracking
+- Redesign app icon to simplified stroke-based SVG
+- Move payment QR codes from README to SPONSORS.md`,
+      zh: `✨ Features
+- 用本地注册表替代远程 SDK 斜杠命令获取：SnakeYAML 解析 SKILL.md frontmatter，扫描个人和项目 skill 目录，会话创建和供应商切换时主动推送 #gadfly3173
+- 新增 Codex Skills 支持：多层级目录扫描、$ 前缀调用、config.toml 启用/禁用集成、双模式 UI #gadfly3173
+- 改进进程生命周期和资源清理：标签页关闭时销毁 daemon、强制终止无响应 daemon、所有路径正确清理 bridge 资源
+- 新增通义千问（Qwen）和 OpenRouter 供应商预设，支持 8 种语言国际化
+- Auto 模式选择器以橙色高亮，作为权限放开的视觉警示
+- 供应商对话框添加安全提示，使用统计添加估算免责声明
+
+🐛 Fixes
+- 修复 IDEA 覆盖 user.home 导致主目录解析错误：读取 USERPROFILE/HOME 环境变量，替换全部 35 处调用（22 个文件），新增 checkstyle 强制约束 #gadfly3173
+- 修复 Node.js 检测失败时加载面板阻塞错误 UI #gadfly3173
+- 修复前后端权限模式状态不同步：统一推/拉流程，优先级规则 payload > session > default #gadfly3173
+- 修复使用统计日期范围过滤：服务端聚合前过滤会话 (#534) #gadfly3173
+- 修复标签页标题管理：手动重命名不再被 AI 状态覆盖，修复双省略号 #Olexandr1904
+- 修复复用 daemon 运行时 hooks 权限模式状态过期问题
+- 解耦状态面板展开状态与内容存在性，由用户偏好控制
+- 移除模型 ID 格式正则限制，支持第三方供应商格式
+- 允许 Codex skill 目录扫描识别符号链接
+- 加固输入验证：路径遍历防护、目录白名单、权限模式白名单、下拉框滚动溢出
+
+🔧 Improvements
+- 提取 Token 使用工具到独立 TokenUsageUtils 类，支持多供应商复用 #gadfly3173
+- 统一前后端权限模式验证，提取共享常量和类型守卫
+- 用 toast 通知和内联反馈替代 alert 弹窗
+- 移除 useUsageStats hook（后台轮询移除后已成空操作） #gadfly3173
+- 加固 Codex Skills 安全性：YAML 解析器 DoS 限制、路径遍历检查、加载状态追踪
+- 重新设计应用图标为简化描边风格 SVG
+- 将支付二维码从 README 移至 SPONSORS.md`,
+    },
+  },
+  {
+    version: '0.2.3',
+    date: '2026-02-27',
+    content: {
+      en: `✨ Features
+- Add daemon mode to eliminate per-request Node.js process spawning: persistent daemon with NDJSON protocol, heartbeat monitoring, auto-restart, and three-phase prewarm strategy for low-latency first messages
+- Add abort/cancel support for daemon mode: interrupt active SDK query immediately instead of waiting for completion
+- Split BasicConfigSection into tabbed layout (Appearance/Behavior/Environment) for improved settings navigation
+
+🐛 Fixes
+- Fix Windows sound notification not playing after AI task completion, switch to native Java audio playback for cross-platform stability #z231485
+- Fix sound notification delay, trigger immediately after stream ends #z231485
+- Fix sound notification reliability: add 30s MP3 playback timeout, prevent duplicate success+error notifications
+- Fix: only show Windows path constraints on Windows platform #hpstream
+- Fix: support filenames with spaces in file tag matching with smart longest-match path resolution #hpstream
+- Fix: resolve model name from settings.json for third-party API proxy compatibility
+- Fix: inject proxy env vars from settings.json for IDE desktop launcher (#429)
+- Fix model mapping fallback: only apply sonnet mapping when model ID contains 'sonnet'
+- Complete autoOpenFile i18n translations for es/fr/hi/ja/zh-TW
+
+🔧 Improvements
+- Optimize file tag matching performance and add unit tests
+- Extract shared Windows path constraint into prompt-utils utility
+- Deduplicate loadClaudeSettings() calls in sendMessage methods
+- Simplify streamEndCallback from Consumer<Boolean> to Runnable`,
+      zh: `✨ Features
+- 新增 Daemon 常驻进程模式：消除每次请求的 Node.js 启动开销（5-10 秒），NDJSON 协议通信，心跳监控、自动重启、三阶段预热
+- 新增 Daemon 模式请求中断支持：立即停止活跃的 SDK 查询
+- 重构基础设置页面为选项卡布局（外观/行为/环境），改善设置导航
+
+🐛 Fixes
+- 修复 Windows 下 AI 任务完成后提示音不播放，改用原生 Java 音频库 #z231485
+- 修复提示音延迟，改为流结束后立即触发 #z231485
+- 提升提示音可靠性：30 秒播放超时，防止成功+错误通知冲突
+- 修复 Windows 路径约束提示仅在 Windows 平台显示 #hpstream
+- 修复文件标签匹配支持带空格的文件名 #hpstream
+- 修复第三方 API 代理兼容性：从 settings.json 读取模型映射名称
+- 修复 IDE 桌面启动器代理环境变量注入 (#429)
+- 修复模型映射回退：仅 sonnet 模型应用映射
+- 补充 autoOpenFile 多语言翻译（es/fr/hi/ja/zh-TW）
+
+🔧 Improvements
+- 优化文件标签匹配性能，新增单元测试
+- 提取 Windows 路径约束到共享工具函数，消除重复
+- 合并重复的 loadClaudeSettings() 调用
+- 简化 streamEndCallback 类型`,
+    },
+  },
+  {
     version: '0.2.2',
     date: '2026-02-25',
     content: {

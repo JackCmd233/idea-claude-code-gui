@@ -36,6 +36,7 @@ import {
   useNativeEventCapture,
   useControlledValueSync,
   useAttachmentHandlers,
+  useAttachmentPersistence,
   useChatInputImperativeHandle,
   useSpaceKeyListener,
   useResizableChatInputBox,
@@ -51,6 +52,8 @@ import {
   promptProvider,
   promptToDropdownItem,
   preloadSlashCommands,
+  dollarCommandProvider,
+  dollarCommandToDropdownItem,
   type AgentItem,
   type PromptItem,
 } from './providers/index.js';
@@ -58,6 +61,8 @@ import { debounce } from './utils/debounce.js';
 import { setCursorOffset } from './utils/selectionUtils.js';
 import { perfTimer } from '../../utils/debug.js';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
+import { ContextMenu } from '../ContextMenu';
+import { useContextMenu, copySelection, cutSelection, pasteAtCursor, insertNewline } from '../../hooks/useContextMenu.js';
 import './styles.css';
 
 /**
@@ -136,6 +141,13 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
     const attachments = externalAttachments ?? internalAttachments;
 
+    // Attachment persistence hook - auto-save/restore attachments from localStorage
+    const { clearDraft: clearAttachmentsDraft } = useAttachmentPersistence({
+      attachments: internalAttachments,
+      isControlled: externalAttachments !== undefined,
+      onRestore: setInternalAttachments,
+    });
+
     // Input element refs and state
     const containerRef = useRef<HTMLDivElement>(null);
     const editableRef = useRef<HTMLDivElement>(null);
@@ -160,6 +172,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       commandCompletion.close();
       agentCompletion.close();
       promptCompletion.close();
+      dollarCommandCompletion.close();
     }, []);
 
     // File tags hook
@@ -330,6 +343,27 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       },
     });
 
+    // $ command completion hook ($ trigger, only active when provider is codex)
+    const dollarCommandCompletion = useCompletionDropdown<CommandItem>({
+      trigger: '$',
+      provider: dollarCommandProvider,
+      toDropdownItem: dollarCommandToDropdownItem,
+      onSelect: (skill, query) => {
+        if (!editableRef.current || !query) return;
+
+        const text = getTextContent();
+        const replacement = `${skill.label} `;
+        const newText = dollarCommandCompletion.replaceText(text, replacement, query);
+
+        editableRef.current.innerText = newText;
+
+        const cursorPos = query.start + replacement.length;
+        setCursorOffset(editableRef.current, cursorPos);
+
+        handleInput();
+      },
+    });
+
     // Inline history completion hook (simple tab-complete style)
     const inlineCompletion = useInlineHistoryCompletion({
       debounceMs: 100,
@@ -338,6 +372,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
     // Tooltip hook
     const { tooltip, handleMouseOver, handleMouseLeave } = useTooltip();
+
+    // Context menu hook
+    const ctxMenu = useContextMenu();
 
     /**
      * Clear input box
@@ -384,6 +421,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       commandCompletion,
       agentCompletion,
       promptCompletion,
+      dollarCommandCompletion,
+      isDollarTriggerEnabled: currentProvider === 'codex',
     });
 
     // Performance optimization: Debounced onInput callback
@@ -459,7 +498,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         // Only if no other completion menu is open
         // Note: Access isOpen directly from the completion objects at call time
         // to avoid unnecessary re-renders when isOpen changes
-        const isOtherCompletionOpen = fileCompletion.isOpen || commandCompletion.isOpen || agentCompletion.isOpen || promptCompletion.isOpen;
+        const isOtherCompletionOpen = fileCompletion.isOpen || commandCompletion.isOpen || agentCompletion.isOpen || promptCompletion.isOpen || dollarCommandCompletion.isOpen;
         if (!isOtherCompletionOpen) {
           inlineCompletion.updateQuery(text);
         } else {
@@ -484,6 +523,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         commandCompletion,
         agentCompletion,
         promptCompletion,
+        dollarCommandCompletion,
         inlineCompletion,
       ]
     );
@@ -574,10 +614,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       },
       externalAttachments,
       setInternalAttachments,
+      clearAttachmentsDraft,
       fileCompletion,
       commandCompletion,
       agentCompletion,
       promptCompletion,
+      dollarCommandCompletion,
       recordInputHistory,
       onSubmit,
       onInstallSdk,
@@ -613,6 +655,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       commandCompletion,
       agentCompletion,
       promptCompletion,
+      dollarCommandCompletion,
       handleMacCursorMovement,
       handleHistoryKeyDown,
       // Inline completion: Tab key applies suggestion
@@ -644,11 +687,23 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       commandCompletion,
       agentCompletion,
       promptCompletion,
+      dollarCommandCompletion,
       completionSelectedRef,
       submittedOnEnterRef,
       handleSubmit,
       handleEnhancePrompt,
     });
+
+    // Listen for IDEA shortcut send event (dispatched by window.execContextAction)
+    useEffect(() => {
+      const handler = () => {
+        if (!isLoading && !isComposingRef.current) {
+          handleSubmit();
+        }
+      };
+      document.addEventListener('ideaSend', handler);
+      return () => document.removeEventListener('ideaSend', handler);
+    }, [handleSubmit, isLoading]);
 
     // Paste and drop hook
     const { handlePaste, handleDragOver, handleDrop } = usePasteAndDrop({
@@ -660,8 +715,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       setHasContent,
       setInternalAttachments,
       onInput,
-      fileCompletion,
-      commandCompletion,
+      closeAllCompletions,
       handleInput,
       flushInput: () => {
         debouncedOnInput.flush();
@@ -725,8 +779,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       renderFileTags,
       setHasContent,
       onInput,
-      fileCompletion,
-      commandCompletion,
+      closeAllCompletions,
       focusInput,
     });
 
@@ -826,7 +879,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
                   fileCompletion.isOpen ||
                   commandCompletion.isOpen ||
                   agentCompletion.isOpen ||
-                  promptCompletion.isOpen
+                  promptCompletion.isOpen ||
+                  dollarCommandCompletion.isOpen
                 ) {
                   return;
                 }
@@ -843,8 +897,23 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             onPaste={handlePaste}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            onContextMenu={ctxMenu.open}
             suppressContentEditableWarning
           />
+          {ctxMenu.visible && (
+            <ContextMenu
+              x={ctxMenu.x}
+              y={ctxMenu.y}
+              onClose={ctxMenu.close}
+              items={[
+                { label: t('contextMenu.copy', 'Copy'), action: () => copySelection(ctxMenu.savedRange, ctxMenu.selectedText), disabled: !ctxMenu.hasSelection },
+                { label: t('contextMenu.cut', 'Cut'), action: () => { if (editableRef.current) { cutSelection(ctxMenu.savedRange, ctxMenu.selectedText, editableRef.current); handleInput(); } }, disabled: !ctxMenu.hasSelection },
+                { label: t('contextMenu.paste', 'Paste'), action: () => { if (editableRef.current) { pasteAtCursor(ctxMenu.savedRange, editableRef.current, handleInput); } } },
+                { separator: true },
+                { label: t('contextMenu.newline', 'Insert Newline'), action: () => { if (editableRef.current) { insertNewline(ctxMenu.savedRange, editableRef.current); handleInput(); } } },
+              ]}
+            />
+          )}
         </div>
 
         <ChatInputBoxFooter
@@ -876,6 +945,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           commandCompletion={commandCompletion}
           agentCompletion={agentCompletion}
           promptCompletion={promptCompletion}
+          dollarCommandCompletion={dollarCommandCompletion}
           tooltip={tooltip}
           promptEnhancer={{
             isOpen: showEnhancerDialog,

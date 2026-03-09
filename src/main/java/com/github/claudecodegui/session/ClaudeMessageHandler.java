@@ -1,11 +1,11 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.provider.common.MessageCallback;
-import com.github.claudecodegui.provider.common.SDKResult;
-import com.github.claudecodegui.ClaudeSession;
 import com.github.claudecodegui.ClaudeSession.Message;
 import com.github.claudecodegui.handler.SettingsHandler;
 import com.github.claudecodegui.notifications.ClaudeNotifier;
+import com.github.claudecodegui.provider.common.MessageCallback;
+import com.github.claudecodegui.provider.common.SDKResult;
+import com.github.claudecodegui.util.TokenUsageUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -52,12 +52,12 @@ public class ClaudeMessageHandler implements MessageCallback {
      * Constructor.
      */
     public ClaudeMessageHandler(
-        Project project,
-        SessionState state,
-        CallbackHandler callbackHandler,
-        MessageParser messageParser,
-        MessageMerger messageMerger,
-        Gson gson
+            Project project,
+            SessionState state,
+            CallbackHandler callbackHandler,
+            MessageParser messageParser,
+            MessageMerger messageMerger,
+            Gson gson
     ) {
         this.project = project;
         this.state = state;
@@ -238,6 +238,21 @@ public class ClaudeMessageHandler implements MessageCallback {
             } else {
                 LOG.debug("Streaming active, skipping full message update in handleAssistantMessage");
             }
+
+            // Update status bar with usage from the assistant message.
+            // In streaming mode, usage is primarily updated via handleUsage() from [USAGE] tags,
+            // so skip here to avoid duplicate updates. In non-streaming mode, this is the primary path.
+            if (!isStreaming && mergedRaw.has("message") && mergedRaw.get("message").isJsonObject()) {
+                JsonObject messageObj = mergedRaw.getAsJsonObject("message");
+                if (messageObj.has("usage") && messageObj.get("usage").isJsonObject()) {
+                    JsonObject usage = messageObj.getAsJsonObject("usage");
+                    int usedTokens = TokenUsageUtils.extractUsedTokens(usage, state.getProvider());
+                    int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
+                    ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
+                    callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
+                    LOG.debug("Updated token usage from assistant message (non-streaming): " + usedTokens);
+                }
+            }
         } catch (Exception e) {
             LOG.warn("Failed to parse assistant message JSON: " + e.getMessage());
         }
@@ -389,8 +404,8 @@ public class ClaudeMessageHandler implements MessageCallback {
         try {
             JsonObject toolResultBlock = gson.fromJson(content, JsonObject.class);
             String toolUseId = toolResultBlock.has("tool_use_id")
-                ? toolResultBlock.get("tool_use_id").getAsString()
-                : null;
+                    ? toolResultBlock.get("tool_use_id").getAsString()
+                    : null;
 
             if (toolUseId != null) {
                 // Build a user message containing the tool_result
@@ -435,51 +450,36 @@ public class ClaudeMessageHandler implements MessageCallback {
     }
 
     /**
-     * Handle the result message containing usage statistics.
+     * Handle the result message as a fallback for non-streaming mode.
+     * In streaming mode, usage is updated via handleUsage() from [USAGE] tags.
+     * In non-streaming mode, [USAGE] tags may not be emitted, so result.usage
+     * serves as the fallback data source to ensure token usage is displayed.
      */
     private void handleResult(String content) {
-        if (!content.startsWith("{")) {
+        if (content == null || !content.startsWith("{")) {
+            LOG.debug("Result message received (non-JSON, skipping)");
             return;
         }
-
         try {
             JsonObject resultJson = gson.fromJson(content, JsonObject.class);
             LOG.debug("Result message received");
-
-            // Always update status bar with token usage if available in result
-            if (resultJson.has("usage")) {
-                JsonObject resultUsage = resultJson.getAsJsonObject("usage");
-                int usedTokens = extractUsedTokens(resultUsage, state.getProvider());
-                int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
-                ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
-            }
-
-            // If the current message's raw usage is all zeros, update it with the result's usage
-            if (currentAssistantMessage != null && currentAssistantMessage.raw != null) {
-                JsonObject message = currentAssistantMessage.raw.has("message") && currentAssistantMessage.raw.get("message").isJsonObject()
-                    ? currentAssistantMessage.raw.getAsJsonObject("message")
-                    : null;
-
-                // Check if the current message's usage is all zeros
-                boolean needsUsageUpdate = false;
-                if (message != null && message.has("usage")) {
-                    JsonObject usage = message.getAsJsonObject("usage");
-                    int inputTokens = usage.has("input_tokens") ? usage.get("input_tokens").getAsInt() : 0;
-                    int outputTokens = usage.has("output_tokens") ? usage.get("output_tokens").getAsInt() : 0;
-                    if (inputTokens == 0 && outputTokens == 0) {
-                        needsUsageUpdate = true;
+            // Fallback: only update usage from result if no usage was received via [USAGE] tag or assistant message
+            if (resultJson.has("usage") && resultJson.get("usage").isJsonObject()
+                    && currentAssistantMessage != null && currentAssistantMessage.raw != null) {
+                JsonObject msg = currentAssistantMessage.raw.has("message")
+                        && currentAssistantMessage.raw.get("message").isJsonObject()
+                        ? currentAssistantMessage.raw.getAsJsonObject("message") : null;
+                boolean hasExistingUsage = msg != null && msg.has("usage") && msg.get("usage").isJsonObject();
+                if (!hasExistingUsage) {
+                    JsonObject usageJson = resultJson.getAsJsonObject("usage");
+                    if (msg != null) {
+                        msg.add("usage", usageJson);
                     }
-                } else {
-                    needsUsageUpdate = true;
-                }
-
-                if (needsUsageUpdate && resultJson.has("usage")) {
-                    JsonObject resultUsage = resultJson.getAsJsonObject("usage");
-                    if (message != null) {
-                        message.add("usage", resultUsage);
-                        callbackHandler.notifyMessageUpdate(state.getMessages());
-                        LOG.debug("Updated assistant message usage from result message");
-                    }
+                    int usedTokens = TokenUsageUtils.extractUsedTokens(usageJson, state.getProvider());
+                    int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
+                    ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
+                    callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
+                    LOG.debug("Fallback: updated token usage from result message: " + usedTokens);
                 }
             }
         } catch (Exception e) {
@@ -607,11 +607,11 @@ public class ClaudeMessageHandler implements MessageCallback {
         ensureCurrentAssistantMessageExists();
         JsonObject raw = currentAssistantMessage.raw;
         JsonObject message = raw.has("message") && raw.get("message").isJsonObject()
-            ? raw.getAsJsonObject("message")
-            : new JsonObject();
+                ? raw.getAsJsonObject("message")
+                : new JsonObject();
         JsonArray content = message.has("content") && message.get("content").isJsonArray()
-            ? message.getAsJsonArray("content")
-            : new JsonArray();
+                ? message.getAsJsonArray("content")
+                : new JsonArray();
         message.add("content", content);
         raw.add("message", message);
         currentAssistantMessage.raw = raw;
@@ -646,78 +646,9 @@ public class ClaudeMessageHandler implements MessageCallback {
         }
 
         String existing = target.has("text") && !target.get("text").isJsonNull()
-            ? target.get("text").getAsString()
-            : "";
+                ? target.get("text").getAsString()
+                : "";
         target.addProperty("text", existing + delta);
-    }
-
-    // ===== Token usage helpers =====
-
-    /**
-     * Calculate context window token usage for Claude provider.
-     * Formula: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-     * (output_tokens excluded — they don't count toward context window until next turn)
-     */
-    public static int calculateContextWindowTokens(int inputTokens, int cacheCreationTokens, int cacheReadTokens) {
-        return inputTokens + cacheCreationTokens + cacheReadTokens;
-    }
-
-    /**
-     * Extract used token count from a usage JSON object, respecting provider differences.
-     * - Claude: input + cache_creation + cache_read (output excluded)
-     * - Codex: input + output (input already includes cached tokens)
-     */
-    public static int extractUsedTokens(JsonObject usage, String provider) {
-        if (usage == null) return 0;
-        int input = usage.has("input_tokens") ? usage.get("input_tokens").getAsInt() : 0;
-        if ("codex".equals(provider)) {
-            int output = usage.has("output_tokens") ? usage.get("output_tokens").getAsInt() : 0;
-            return input + output;
-        }
-        int cacheCreation = usage.has("cache_creation_input_tokens") ? usage.get("cache_creation_input_tokens").getAsInt() : 0;
-        int cacheRead = usage.has("cache_read_input_tokens") ? usage.get("cache_read_input_tokens").getAsInt() : 0;
-        return calculateContextWindowTokens(input, cacheCreation, cacheRead);
-    }
-
-    /**
-     * Find the last usage JSON from a list of raw server messages (JsonObject).
-     * Scans from end to find the last assistant message with usage data.
-     */
-    public static JsonObject findLastUsageFromRawMessages(List<JsonObject> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            JsonObject msg = messages.get(i);
-            if (!msg.has("type") || !"assistant".equals(msg.get("type").getAsString())) continue;
-            if (msg.has("message") && msg.get("message").isJsonObject()) {
-                JsonObject message = msg.getAsJsonObject("message");
-                if (message.has("usage") && message.get("usage").isJsonObject()) {
-                    return message.getAsJsonObject("usage");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Find the last usage JSON from a list of parsed session messages.
-     * Scans from end to find the last assistant message with usage data.
-     */
-    public static JsonObject findLastUsageFromSessionMessages(List<ClaudeSession.Message> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            ClaudeSession.Message msg = messages.get(i);
-            if (msg.type != ClaudeSession.Message.Type.ASSISTANT || msg.raw == null) continue;
-            // Check usage inside message object
-            if (msg.raw.has("message") && msg.raw.get("message").isJsonObject()) {
-                JsonObject message = msg.raw.getAsJsonObject("message");
-                if (message.has("usage") && message.get("usage").isJsonObject()) {
-                    return message.getAsJsonObject("usage");
-                }
-            }
-            // Check usage at root level
-            if (msg.raw.has("usage") && msg.raw.get("usage").isJsonObject()) {
-                return msg.raw.getAsJsonObject("usage");
-            }
-        }
-        return null;
     }
 
     /**
@@ -727,39 +658,42 @@ public class ClaudeMessageHandler implements MessageCallback {
         if (content == null || content.isEmpty() || !content.startsWith("{")) return;
         try {
             JsonObject usageJson = gson.fromJson(content, JsonObject.class);
-            int usedTokens = extractUsedTokens(usageJson, state.getProvider());
+            int usedTokens = TokenUsageUtils.extractUsedTokens(usageJson, state.getProvider());
             int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
             ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
+            // Notify webview of usage update
+            callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
+            // Ensure assistant message exists before backfilling usage
+            ensureCurrentAssistantMessageExists();
             backfillUsageToAssistantMessage(usageJson);
+            LOG.debug("Updated token usage from [USAGE] tag: " + usedTokens);
         } catch (Exception e) {
             LOG.warn("Failed to parse usage data: " + e.getMessage());
         }
     }
 
     /**
-     * Backfill usage data into the current assistant message's raw JSON if it has zero/missing usage.
+     * Backfill usage data into the current assistant message's raw JSON.
+     * Uses monotonic increase check to prevent overwriting a larger value with a smaller one
+     * (e.g., due to out-of-order message delivery).
      */
     private void backfillUsageToAssistantMessage(JsonObject usageJson) {
         if (currentAssistantMessage == null || currentAssistantMessage.raw == null) return;
         JsonObject message = currentAssistantMessage.raw.has("message") && currentAssistantMessage.raw.get("message").isJsonObject()
-            ? currentAssistantMessage.raw.getAsJsonObject("message") : null;
+                ? currentAssistantMessage.raw.getAsJsonObject("message") : null;
         if (message == null) return;
 
-        boolean needsUpdate;
+        // Monotonic increase check: only update if new total >= existing total
+        int newTotal = TokenUsageUtils.extractUsedTokens(usageJson, state.getProvider());
         if (message.has("usage") && message.get("usage").isJsonObject()) {
-            JsonObject usage = message.getAsJsonObject("usage");
-            int existingInput = usage.has("input_tokens") ? usage.get("input_tokens").getAsInt() : 0;
-            int existingOutput = usage.has("output_tokens") ? usage.get("output_tokens").getAsInt() : 0;
-            needsUpdate = (existingInput == 0 && existingOutput == 0);
-        } else {
-            needsUpdate = true;
+            int existingTotal = TokenUsageUtils.extractUsedTokens(message.getAsJsonObject("usage"), state.getProvider());
+            if (newTotal < existingTotal) {
+                LOG.debug("Skipping usage backfill: new total " + newTotal + " < existing " + existingTotal);
+                return;
+            }
         }
-
-        if (needsUpdate) {
-            message.add("usage", usageJson);
-            callbackHandler.notifyMessageUpdate(state.getMessages());
-            LOG.debug("Updated assistant message usage from [USAGE] tag");
-        }
+        message.add("usage", usageJson);
+        LOG.debug("Updated assistant message usage from [USAGE] tag: " + newTotal);
     }
 
     private void applyThinkingDeltaToRaw(String delta) {
@@ -790,8 +724,8 @@ public class ClaudeMessageHandler implements MessageCallback {
         }
 
         String existing = target.has("thinking") && !target.get("thinking").isJsonNull()
-            ? target.get("thinking").getAsString()
-            : "";
+                ? target.get("thinking").getAsString()
+                : "";
         target.addProperty("thinking", existing + delta);
     }
 }

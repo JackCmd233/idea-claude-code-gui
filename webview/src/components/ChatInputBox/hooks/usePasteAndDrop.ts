@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { Attachment } from '../types.js';
 import { generateId } from '../utils/generateId.js';
 import { insertTextAtCursor } from '../utils/selectionUtils.js';
@@ -19,8 +19,7 @@ interface UsePasteAndDropOptions {
   setHasContent: (hasContent: boolean) => void;
   setInternalAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>;
   onInput?: (content: string) => void;
-  fileCompletion: { close: () => void };
-  commandCompletion: { close: () => void };
+  closeAllCompletions: () => void;
   handleInput: (isComposingFromEvent?: boolean) => void;
   /** Immediately flush pending debounced onInput to sync parent state */
   flushInput: () => void;
@@ -53,8 +52,7 @@ export function usePasteAndDrop({
   setHasContent,
   setInternalAttachments,
   onInput,
-  fileCompletion,
-  commandCompletion,
+  closeAllCompletions,
   handleInput,
   flushInput,
 }: UsePasteAndDropOptions): UsePasteAndDropReturn {
@@ -300,9 +298,8 @@ export function usePasteAndDrop({
           }
         }
 
-        // Close completion menus
-        fileCompletion.close();
-        commandCompletion.close();
+        // Close all completion menus
+        closeAllCompletions();
 
         // Directly trigger state update, don't call handleInput (avoid re-detecting completion)
         const newText = getTextContent();
@@ -325,10 +322,27 @@ export function usePasteAndDrop({
       setHasContent,
       setInternalAttachments,
       onInput,
-      fileCompletion,
-      commandCompletion,
+      closeAllCompletions,
     ]
   );
+
+  // Listen for image paste events dispatched from Java side (when clipboard has image but no text)
+  useEffect(() => {
+    const onJavaPasteImage = (e: Event) => {
+      const { base64, mediaType } = (e as CustomEvent).detail;
+      if (!base64) return;
+      const ext = mediaType?.split('/')[1] || 'png';
+      const attachment: Attachment = {
+        id: generateId(),
+        fileName: `pasted-image-${Date.now()}.${ext}`,
+        mediaType: mediaType || 'image/png',
+        data: base64,
+      };
+      setInternalAttachments((prev) => [...prev, attachment]);
+    };
+    window.addEventListener('java-paste-image', onJavaPasteImage);
+    return () => window.removeEventListener('java-paste-image', onJavaPasteImage);
+  }, [setInternalAttachments]);
 
   return {
     handlePaste,

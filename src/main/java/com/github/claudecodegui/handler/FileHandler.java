@@ -5,6 +5,7 @@ import com.github.claudecodegui.service.RunConfigMonitorService;
 import com.github.claudecodegui.terminal.TerminalMonitorService;
 import com.github.claudecodegui.util.EditorFileUtils;
 import com.github.claudecodegui.util.IgnoreRuleMatcher;
+import com.github.claudecodegui.util.PlatformUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.ide.BrowserUtil;
@@ -26,13 +27,13 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * File and command related message handler.
+ * File related message handler.
  */
 public class FileHandler extends BaseMessageHandler {
 
     private static final Logger LOG = Logger.getInstance(FileHandler.class);
 
-    private static final String[] SUPPORTED_TYPES = {"list_files", "get_commands", "open_file", "open_browser",};
+    private static final String[] SUPPORTED_TYPES = {"list_files", "open_file", "open_browser"};
 
     // Constants
     private static final int MAX_RECENT_FILES = 50;
@@ -85,22 +86,21 @@ public class FileHandler extends BaseMessageHandler {
 
     @Override
     public boolean handle(String type, String content) {
-        switch (type) {
-            case "list_files":
+        return switch (type) {
+            case "list_files" -> {
                 handleListFiles(content);
-                return true;
-            case "get_commands":
-                handleGetCommands(content);
-                return true;
-            case "open_file":
+                yield true;
+            }
+            case "open_file" -> {
                 handleOpenFile(content);
-                return true;
-            case "open_browser":
+                yield true;
+            }
+            case "open_browser" -> {
                 handleOpenBrowser(content);
-                return true;
-            default:
-                return false;
-        }
+                yield true;
+            }
+            default -> false;
+        };
     }
 
     /**
@@ -123,7 +123,7 @@ public class FileHandler extends BaseMessageHandler {
 
                 // Priority 0: Active Terminals
                 collectActiveTerminals(files, request);
-                
+
                 // Priority 0: Active Services
                 collectActiveServices(files, request);
 
@@ -277,7 +277,7 @@ public class FileHandler extends BaseMessageHandler {
                 for (RunConfigMonitorService.RunConfigInfo config : configs) {
                     String displayName = config.getDisplayName();
                     String title = "Service: " + displayName;
-                    
+
                     // Create safe name for the path (replace spaces with _, remove special chars)
                     String safeName = displayName.replace(" ", "_").replaceAll("[^a-zA-Z0-9_]", "");
                     String path = "service://" + safeName;
@@ -309,17 +309,17 @@ public class FileHandler extends BaseMessageHandler {
             try {
                 List<Object> widgets = TerminalMonitorService.getWidgets(project);
                 Map<String, Integer> nameCounts = new HashMap<>();
-                
+
                 for (Object widget : widgets) {
                     String baseTitle = TerminalMonitorService.getWidgetTitle(widget);
                     int count = nameCounts.getOrDefault(baseTitle, 0) + 1;
                     nameCounts.put(baseTitle, count);
-                    
+
                     String titleText = baseTitle;
                     if (count > 1) {
                         titleText = baseTitle + " (" + count + ")";
                     }
-                    
+
                     String title = "Terminal: " + titleText;
                     String safeName = titleText.replace(" ", "_").replaceAll("[^a-zA-Z0-9_]", "");
                     String path = "terminal://" + safeName;
@@ -380,7 +380,7 @@ public class FileHandler extends BaseMessageHandler {
             }
         }
 
-        String userHome = System.getProperty("user.home");
+        String userHome = PlatformUtils.getHomeDirectory();
         if (userHome != null && !userHome.isEmpty()) {
             LOG.debug("[FileHandler] Using user.home as base path: " + userHome);
             return userHome;
@@ -434,111 +434,6 @@ public class FileHandler extends BaseMessageHandler {
         for (FileSortItem item : items) {
             files.add(item.json);
         }
-    }
-
-    /**
-     * Handle get command list request.
-     * Calls ClaudeSDKBridge to get the real SDK slash command list.
-     */
-    private void handleGetCommands(String content) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                String query = "";
-                if (content != null && !content.isEmpty()) {
-                    try {
-                        Gson gson = new Gson();
-                        JsonObject json = gson.fromJson(content, JsonObject.class);
-                        if (json.has("query")) {
-                            query = json.get("query").getAsString();
-                        }
-                    } catch (Exception e) {
-                        query = content;
-                    }
-                }
-
-                // Get working directory
-                String cwd = getEffectiveBasePath();
-
-                LOG.info("[FileHandler] Getting slash commands from SDK, cwd=" + cwd);
-
-                // Call ClaudeSDKBridge to get the real slash commands
-                final String finalQuery = query;
-                context.getClaudeSDKBridge().getSlashCommands(cwd).thenAccept(sdkCommands -> {
-                    try {
-                        Gson gson = new Gson();
-                        List<JsonObject> commands = new ArrayList<>();
-
-                        // Convert SDK returned command format
-                        for (JsonObject cmd : sdkCommands) {
-                            String name = cmd.has("name") ? cmd.get("name").getAsString() : "";
-                            String description = cmd.has("description") ? cmd.get("description").getAsString() : "";
-
-                            // Ensure command starts with /
-                            String label = name.startsWith("/") ? name : "/" + name;
-
-                            // Apply filter
-                            if (finalQuery.isEmpty() || label.toLowerCase().contains(finalQuery.toLowerCase()) || description.toLowerCase().contains(finalQuery.toLowerCase())) {
-                                JsonObject cmdObj = new JsonObject();
-                                cmdObj.addProperty("label", label);
-                                cmdObj.addProperty("description", description);
-                                commands.add(cmdObj);
-                            }
-                        }
-
-                        LOG.info("[FileHandler] Got " + commands.size() + " commands from SDK (filtered from " + sdkCommands.size() + ")");
-
-                        // If SDK returned no commands, use local default commands as fallback
-                        if (commands.isEmpty() && sdkCommands.isEmpty()) {
-                            LOG.info("[FileHandler] SDK returned no commands, using local fallback");
-                            addFallbackCommands(commands, finalQuery);
-                        }
-
-                        JsonObject result = new JsonObject();
-                        result.add("commands", gson.toJsonTree(commands));
-                        String resultJson = gson.toJson(result);
-
-                        ApplicationManager.getApplication().invokeLater(() -> {
-                            String js = "if (window.onCommandListResult) { window.onCommandListResult('" + escapeJs(resultJson) + "'); }";
-                            context.executeJavaScriptOnEDT(js);
-                        });
-                    } catch (Exception e) {
-                        LOG.error("[FileHandler] Failed to process SDK commands: " + e.getMessage(), e);
-                    }
-                }).exceptionally(ex -> {
-                    LOG.error("[FileHandler] Failed to get commands from SDK: " + ex.getMessage());
-                    // Use local default commands on error
-                    try {
-                        Gson gson = new Gson();
-                        List<JsonObject> commands = new ArrayList<>();
-                        addFallbackCommands(commands, finalQuery);
-
-                        JsonObject result = new JsonObject();
-                        result.add("commands", gson.toJsonTree(commands));
-                        String resultJson = gson.toJson(result);
-
-                        ApplicationManager.getApplication().invokeLater(() -> {
-                            String js = "if (window.onCommandListResult) { window.onCommandListResult('" + escapeJs(resultJson) + "'); }";
-                            context.executeJavaScriptOnEDT(js);
-                        });
-                    } catch (Exception e) {
-                        LOG.error("[FileHandler] Failed to send fallback commands: " + e.getMessage(), e);
-                    }
-                    return null;
-                });
-            } catch (Exception e) {
-                LOG.error("[FileHandler] Failed to get commands: " + e.getMessage(), e);
-            }
-        });
-    }
-
-    private void addFallbackCommands(List<JsonObject> commands, String query) {
-        addCommand(commands, "/help", "显示帮助信息", query);
-        addCommand(commands, "/clear", "清空对话历史", query);
-        addCommand(commands, "/history", "查看历史记录", query);
-        addCommand(commands, "/model", "切换模型", query);
-        addCommand(commands, "/compact", "压缩对话上下文", query);
-        addCommand(commands, "/init", "初始化项目配置", query);
-        addCommand(commands, "/review", "代码审查", query);
     }
 
     /**
@@ -755,8 +650,8 @@ public class FileHandler extends BaseMessageHandler {
 
         // Check if cache is valid
         boolean cacheValid = cachedIgnoreMatcher != null
-                && basePath.equals(cachedIgnoreMatcherBasePath)
-                && currentLastModified == cachedGitignoreLastModified;
+                                     && basePath.equals(cachedIgnoreMatcherBasePath)
+                                     && currentLastModified == cachedGitignoreLastModified;
 
         if (cacheValid) {
             return cachedIgnoreMatcher;
@@ -827,18 +722,6 @@ public class FileHandler extends BaseMessageHandler {
             }
         }
         return fileObj;
-    }
-
-    /**
-     * Add a command to the list.
-     */
-    private void addCommand(List<JsonObject> commands, String label, String description, String query) {
-        if (query.isEmpty() || label.toLowerCase().contains(query.toLowerCase()) || description.toLowerCase().contains(query.toLowerCase())) {
-            JsonObject cmd = new JsonObject();
-            cmd.addProperty("label", label);
-            cmd.addProperty("description", description);
-            commands.add(cmd);
-        }
     }
 
     /**

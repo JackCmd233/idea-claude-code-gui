@@ -7,6 +7,7 @@ import com.github.claudecodegui.ClaudeSession;
 import com.github.claudecodegui.model.NodeDetectionResult;
 import com.github.claudecodegui.provider.common.BaseSDKBridge;
 import com.github.claudecodegui.provider.common.MessageCallback;
+import com.github.claudecodegui.provider.common.DaemonBridge;
 import com.github.claudecodegui.provider.common.SDKResult;
 import com.github.claudecodegui.util.PlatformUtils;
 
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
 /**
@@ -29,7 +31,6 @@ import java.util.regex.Pattern;
 public class ClaudeSDKBridge extends BaseSDKBridge {
 
     private static final String NODE_SCRIPT = "simple-query.js";
-    private static final String SLASH_COMMANDS_CHANNEL_ID = "__slash_commands__";
     private static final String MCP_STATUS_CHANNEL_ID = "__mcp_status__";
 
     /** Maximum characters to preview in log output */
@@ -54,8 +55,161 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
             Pattern.CASE_INSENSITIVE
     );
 
+    // Daemon bridge for long-running Node.js process (avoids per-request process spawning)
+    private volatile DaemonBridge daemonBridge;
+    private final Object daemonLock = new Object();
+    private volatile long daemonRetryAfter = 0;
+    private volatile CompletableFuture<?> prewarmFuture;
+
     public ClaudeSDKBridge() {
         super(ClaudeSDKBridge.class);
+    }
+
+    // ============================================================================
+    // Daemon lifecycle
+    // ============================================================================
+
+    /**
+     * Get or initialize the daemon bridge.
+     * Returns null if daemon cannot be started (falls back to per-process mode).
+     */
+    private DaemonBridge getDaemonBridge() {
+        DaemonBridge db = daemonBridge;
+        if (db != null && db.isAlive()) {
+            return db;
+        }
+        if (System.currentTimeMillis() < daemonRetryAfter) {
+            return null;
+        }
+        synchronized (daemonLock) {
+            db = daemonBridge;
+            if (db != null && db.isAlive()) return db;
+            daemonRetryAfter = System.currentTimeMillis() + 60_000;
+            try {
+                if (db != null) db.stop();
+                db = new DaemonBridge(nodeDetector, getDirectoryResolver(), envConfigurator);
+                if (db.start()) {
+                    daemonBridge = db;
+                    daemonRetryAfter = 0;
+                    LOG.info("[ClaudeSDKBridge] Daemon bridge started successfully");
+                    return db;
+                }
+                LOG.warn("[ClaudeSDKBridge] Failed to start daemon, using per-process mode");
+            } catch (Exception e) {
+                LOG.debug("[ClaudeSDKBridge] Daemon init failed: " + e.getMessage());
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Shut down the daemon process.
+     */
+    public void shutdownDaemon() {
+        CompletableFuture<?> pf = prewarmFuture;
+        if (pf != null) {
+            pf.cancel(true);
+            prewarmFuture = null;
+        }
+        DaemonBridge db = daemonBridge;
+        if (db != null) {
+            db.stop();
+            daemonBridge = null;
+            daemonRetryAfter = 0;
+        }
+    }
+
+    /**
+     * Prewarm daemon asynchronously to reduce first-message latency.
+     */
+    public void prewarmDaemonAsync(String cwd) {
+        // Cancel any previous prewarm in progress
+        CompletableFuture<?> prev = prewarmFuture;
+        if (prev != null && !prev.isDone()) {
+            prev.cancel(true);
+        }
+        prewarmFuture = CompletableFuture.runAsync(() -> {
+            try {
+                DaemonBridge db = getDaemonBridge();
+                if (db != null) {
+                    JsonObject preconnectParams = new JsonObject();
+                    preconnectParams.addProperty("cwd", cwd != null ? cwd : "");
+                    preconnectParams.addProperty("sessionId", "");
+                    preconnectParams.addProperty("permissionMode", "");
+                    preconnectParams.addProperty("model", "");
+                    preconnectParams.addProperty("streaming", true);
+
+                    JsonObject envVars = new JsonObject();
+                    envVars.addProperty("CLAUDE_USE_STDIN", "true");
+                    if (cwd != null && !cwd.isEmpty()
+                            && !"undefined".equals(cwd) && !"null".equals(cwd)) {
+                        envVars.addProperty("IDEA_PROJECT_PATH", cwd);
+                        envVars.addProperty("PROJECT_PATH", cwd);
+                    }
+                    preconnectParams.add("env", envVars);
+
+                    CompletableFuture<Boolean> preconnectFuture = db.sendCommand(
+                            "claude.preconnect",
+                            preconnectParams,
+                            new DaemonBridge.DaemonOutputCallback() {
+                                @Override
+                                public void onLine(String line) {
+                                    if (line.startsWith("[SEND_ERROR]")) {
+                                        LOG.warn("[ClaudeSDKBridge] Daemon preconnect error line: " + line);
+                                    }
+                                }
+
+                                @Override
+                                public void onStderr(String text) {
+                                    LOG.debug("[ClaudeSDKBridge] Daemon preconnect stderr: " + text);
+                                }
+
+                                @Override
+                                public void onError(String error) {
+                                    LOG.warn("[ClaudeSDKBridge] Daemon preconnect failed: " + error);
+                                }
+
+                                @Override
+                                public void onComplete(boolean success) {
+                                    LOG.info("[ClaudeSDKBridge] Daemon preconnect completed: success=" + success);
+                                }
+                            }
+                    );
+
+                    preconnectFuture.get(45, TimeUnit.SECONDS);
+                    LOG.info("[ClaudeSDKBridge] Daemon prewarm completed");
+                } else {
+                    LOG.info("[ClaudeSDKBridge] Daemon prewarm skipped (daemon unavailable)");
+                }
+            } catch (Exception e) {
+                LOG.debug("[ClaudeSDKBridge] Daemon prewarm failed: " + e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    public void cleanupAllProcesses() {
+        shutdownDaemon();
+        super.cleanupAllProcesses();
+    }
+
+    /**
+     * Interrupt a channel. In daemon mode, sends an abort command to cancel the
+     * active request. Also delegates to ProcessManager for per-process fallback.
+     */
+    @Override
+    public void interruptChannel(String channelId) {
+        DaemonBridge db = daemonBridge;
+        if (db != null && db.isAlive()) {
+            LOG.info("[ClaudeSDKBridge] Sending daemon abort for channel: " + channelId);
+            try {
+                db.sendAbort();
+            } catch (Exception e) {
+                LOG.error("[ClaudeSDKBridge] Daemon abort failed: " + e.getMessage());
+            }
+        }
+        // Also try per-process interrupt (covers per-process fallback mode)
+        super.interruptChannel(channelId);
     }
 
     // ============================================================================
@@ -155,9 +309,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
         } else if (line.startsWith("[SESSION_ID]")) {
             String capturedSessionId = line.substring("[SESSION_ID]".length()).trim();
             callback.onMessage("session_id", capturedSessionId);
-        } else if (line.startsWith("[SLASH_COMMANDS]")) {
-            String slashCommandsJson = line.substring("[SLASH_COMMANDS]".length()).trim();
-            callback.onMessage("slash_commands", slashCommandsJson);
         } else if (line.startsWith("[TOOL_RESULT]")) {
             String toolResultJson = line.substring("[TOOL_RESULT]".length()).trim();
             callback.onMessage("tool_result", toolResultJson);
@@ -572,6 +723,16 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
             Boolean disableThinking,
             MessageCallback callback
     ) {
+        // Try daemon mode first (avoids per-request Node.js process spawning)
+        DaemonBridge db = getDaemonBridge();
+        if (db != null) {
+            return sendMessageViaDaemon(db, channelId, message, sessionId, cwd,
+                    attachments, permissionMode, model, openedFiles, agentPrompt,
+                    streaming, disableThinking, callback);
+        }
+
+        // Fallback: per-process mode (spawns a new Node.js process per request)
+        LOG.info("[ClaudeSDKBridge] Using per-process mode (daemon not available)");
         return CompletableFuture.supplyAsync(() -> {
             SDKResult result = new SDKResult();
             StringBuilder assistantContent = new StringBuilder();
@@ -689,9 +850,8 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
                     LOG.info("[ClaudeSDKBridge] Node.js process started, PID: " + process.pid());
                     processManager.registerProcess(channelId, process);
 
-                    // Check for early exit
+                    // Check for immediate early exit
                     try {
-                        Thread.sleep(500);
                         if (!process.isAlive()) {
                             int earlyExitCode = process.exitValue();
                             LOG.error("[ClaudeSDKBridge] Process exited immediately, exitCode: " + earlyExitCode);
@@ -709,8 +869,8 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
                                 }
                             }
                         }
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
+                    } catch (Exception earlyCheckError) {
+                        LOG.debug("[ClaudeSDKBridge] Early exit check failed: " + earlyCheckError.getMessage());
                     }
 
                     // Write to stdin
@@ -813,9 +973,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
                             } else if (line.startsWith("[SESSION_ID]")) {
                                 String capturedSessionId = line.substring("[SESSION_ID]".length()).trim();
                                 callback.onMessage("session_id", capturedSessionId);
-                            } else if (line.startsWith("[SLASH_COMMANDS]")) {
-                                String slashCommandsJson = line.substring("[SLASH_COMMANDS]".length()).trim();
-                                callback.onMessage("slash_commands", slashCommandsJson);
                             } else if (line.startsWith("[TOOL_RESULT]")) {
                                 String toolResultJson = line.substring("[TOOL_RESULT]".length()).trim();
                                 callback.onMessage("tool_result", toolResultJson);
@@ -964,138 +1121,6 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
         } catch (Exception e) {
             throw new RuntimeException("Failed to get session messages: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Get slash commands list.
-     */
-    public CompletableFuture<List<JsonObject>> getSlashCommands(String cwd) {
-        return CompletableFuture.supplyAsync(() -> {
-            Process process = null;
-
-            try {
-                String node = nodeDetector.findNodeExecutable();
-
-                JsonObject stdinInput = new JsonObject();
-                stdinInput.addProperty("cwd", cwd != null ? cwd : "");
-                String stdinJson = gson.toJson(stdinInput);
-
-                File bridgeDir = getDirectoryResolver().findSdkDir();
-                if (bridgeDir == null || !bridgeDir.exists()) {
-                    return new ArrayList<>();
-                }
-
-                File channelScript = new File(bridgeDir, CHANNEL_SCRIPT);
-                if (!channelScript.exists()) {
-                    LOG.error("channel-manager.js not found at: " + channelScript.getAbsolutePath());
-                    return new ArrayList<>();
-                }
-
-                List<String> command = new ArrayList<>();
-                command.add(node);
-                command.add(channelScript.getAbsolutePath());
-                command.add("claude");
-                command.add("getSlashCommands");
-
-                ProcessBuilder pb = new ProcessBuilder(command);
-                pb.directory(bridgeDir);
-                pb.redirectErrorStream(true);
-                envConfigurator.updateProcessEnvironment(pb, node);
-                pb.environment().put("CLAUDE_USE_STDIN", "true");
-
-                process = pb.start();
-                processManager.registerProcess(SLASH_COMMANDS_CHANNEL_ID, process);
-                final Process finalProcess = process;
-
-                try (java.io.OutputStream stdin = process.getOutputStream()) {
-                    stdin.write(stdinJson.getBytes(StandardCharsets.UTF_8));
-                    stdin.flush();
-                } catch (Exception e) {
-                    // Ignore stdin write error
-                }
-
-                final boolean[] found = {false};
-                final String[] slashCommandsJson = {null};
-                final StringBuilder output = new StringBuilder();
-
-                Thread readerThread = new Thread(() -> {
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(finalProcess.getInputStream(), StandardCharsets.UTF_8))) {
-                        String line;
-                        while (!found[0] && (line = reader.readLine()) != null) {
-                            output.append(line).append("\n");
-
-                            if (line.startsWith("[SLASH_COMMANDS]")) {
-                                slashCommandsJson[0] = line.substring("[SLASH_COMMANDS]".length()).trim();
-                                found[0] = true;
-                                break;
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Reader thread exception, ignore
-                    }
-                });
-                readerThread.start();
-
-                long deadline = System.currentTimeMillis() + 60000; // 60-second timeout
-                while (!found[0] && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(100);
-                }
-
-                if (process.isAlive()) {
-                    PlatformUtils.terminateProcess(process);
-                }
-
-                List<JsonObject> commands = new ArrayList<>();
-
-                if (found[0] && slashCommandsJson[0] != null && !slashCommandsJson[0].isEmpty()) {
-                    try {
-                        JsonArray commandsArray = gson.fromJson(slashCommandsJson[0], JsonArray.class);
-                        for (var cmd : commandsArray) {
-                            commands.add(cmd.getAsJsonObject());
-                        }
-                        return commands;
-                    } catch (Exception e) {
-                        LOG.warn("Failed to parse commands JSON: " + e.getMessage());
-                    }
-                }
-
-                // Fallback: use extractLastJsonLine for multi-line output handling
-                String outputStr = output.toString().trim();
-                String jsonStr = extractLastJsonLine(outputStr);
-                if (jsonStr != null) {
-                    try {
-                        JsonObject jsonResult = gson.fromJson(jsonStr, JsonObject.class);
-                        if (jsonResult.has("success") && jsonResult.get("success").getAsBoolean()) {
-                            if (jsonResult.has("commands")) {
-                                JsonArray commandsArray = jsonResult.getAsJsonArray("commands");
-                                for (var cmd : commandsArray) {
-                                    commands.add(cmd.getAsJsonObject());
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Fallback JSON parse failed, ignore
-                    }
-                }
-
-                return commands;
-
-            } catch (Exception e) {
-                LOG.error("getSlashCommands exception: " + e.getMessage());
-                return new ArrayList<>();
-            } finally {
-                if (process != null) {
-                    try {
-                        if (process.isAlive()) {
-                            PlatformUtils.terminateProcess(process);
-                        }
-                    } finally {
-                        processManager.unregisterProcess(SLASH_COMMANDS_CHANNEL_ID, process);
-                    }
-                }
-            }
-        });
     }
 
     /**
@@ -1532,6 +1557,227 @@ public class ClaudeSDKBridge extends BaseSDKBridge {
 
     public CompletableFuture<JsonObject> rewindFiles(String sessionId, String userMessageId) {
         return rewindFiles(sessionId, userMessageId, null);
+    }
+
+    // ============================================================================
+    // Daemon mode message sending
+    // ============================================================================
+
+    /**
+     * Send message via the long-running daemon process.
+     * This avoids the ~5-10s overhead of spawning a new Node.js process per request.
+     */
+    private CompletableFuture<SDKResult> sendMessageViaDaemon(
+            DaemonBridge daemon,
+            String channelId,
+            String message,
+            String sessionId,
+            String cwd,
+            List<ClaudeSession.Attachment> attachments,
+            String permissionMode,
+            String model,
+            JsonObject openedFiles,
+            String agentPrompt,
+            Boolean streaming,
+            Boolean disableThinking,
+            MessageCallback callback
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            SDKResult result = new SDKResult();
+            StringBuilder assistantContent = new StringBuilder();
+            final boolean[] hadSendError = {false};
+            final String[] lastNodeError = {null};
+
+            try {
+                // Build params (same fields as stdinInput in process mode)
+                JsonObject params = buildSendParams(
+                        message, sessionId, cwd, permissionMode, model,
+                        attachments, openedFiles, agentPrompt, streaming, disableThinking);
+
+                boolean hasAttachments = attachments != null && !attachments.isEmpty()
+                        && params.has("attachments");
+
+                // Add per-request environment variables
+                JsonObject envVars = new JsonObject();
+                envVars.addProperty("CLAUDE_USE_STDIN", "true");
+                if (cwd != null && !cwd.isEmpty()
+                        && !"undefined".equals(cwd) && !"null".equals(cwd)) {
+                    envVars.addProperty("IDEA_PROJECT_PATH", cwd);
+                    envVars.addProperty("PROJECT_PATH", cwd);
+                }
+                params.add("env", envVars);
+
+                String method = hasAttachments ? "claude.sendWithAttachments" : "claude.send";
+                LOG.info("[ClaudeSDKBridge] Sending via daemon: " + method);
+
+                CompletableFuture<Boolean> cmdFuture = daemon.sendCommand(
+                        method, params, new DaemonBridge.DaemonOutputCallback() {
+                    @Override
+                    public void onLine(String line) {
+                        // Capture Node.js error logs
+                        if (line.startsWith("[UNCAUGHT_ERROR]")
+                                || line.startsWith("[UNHANDLED_REJECTION]")
+                                || line.startsWith("[COMMAND_ERROR]")
+                                || line.startsWith("[STARTUP_ERROR]")
+                                || line.startsWith("[ERROR]")) {
+                            LOG.warn("[Node.js ERROR] " + line);
+                            lastNodeError[0] = line;
+                        }
+                        // Delegate to existing tag processing
+                        processOutputLine(line, callback, result,
+                                assistantContent, hadSendError, lastNodeError);
+                    }
+
+                    @Override
+                    public void onStderr(String text) {
+                        if (text != null && text.startsWith("[SEND_ERROR]")) {
+                            processOutputLine(text, callback, result,
+                                    assistantContent, hadSendError, lastNodeError);
+                            return;
+                        }
+                        LOG.debug("[DaemonBridge:stderr] " + text);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        if (!hadSendError[0]) {
+                            result.success = false;
+                            result.error = error;
+                        }
+                    }
+
+                    @Override
+                    public void onComplete(boolean success) {
+                        // Completion is handled after future.get() below
+                    }
+                });
+
+                // Block until daemon signals completion.
+                // Use bounded polling instead of a hard 5-minute timeout to avoid
+                // false failures for long-running tasks that are still streaming.
+                Boolean success;
+                long waitStart = System.currentTimeMillis();
+                long lastProgressLogAt = waitStart;
+                while (true) {
+                    try {
+                        success = cmdFuture.get(30, TimeUnit.SECONDS);
+                        break;
+                    } catch (TimeoutException timeout) {
+                        if (!daemon.isAlive()) {
+                            throw new RuntimeException("Daemon process is not alive while waiting for response", timeout);
+                        }
+                        long now = System.currentTimeMillis();
+                        // Throttle progress logs (once per minute)
+                        if (now - lastProgressLogAt >= 60_000) {
+                            long elapsedSec = (now - waitStart) / 1000;
+                            LOG.info("[ClaudeSDKBridge] Daemon request still running (" + elapsedSec + "s), waiting...");
+                            lastProgressLogAt = now;
+                        }
+                    }
+                }
+
+                // Finalize result
+                result.finalResult = assistantContent.toString();
+                result.messageCount = result.messages.size();
+
+                if (!hadSendError[0]) {
+                    result.success = success != null && success;
+                    if (result.success) {
+                        callback.onComplete(result);
+                    } else {
+                        String errorMsg = "Daemon command failed";
+                        if (lastNodeError[0] != null) {
+                            errorMsg += "\n\nDetails: " + lastNodeError[0];
+                        }
+                        if (result.error == null) {
+                            result.error = errorMsg;
+                        }
+                        callback.onError(result.error);
+                    }
+                }
+
+                return result;
+            } catch (Exception e) {
+                if (!hadSendError[0]) {
+                    result.success = false;
+                    result.error = "Daemon request failed: " + extractErrorMessage(e);
+                    callback.onError(result.error);
+                }
+                return result;
+            }
+        }).exceptionally(ex -> {
+            SDKResult errorResult = new SDKResult();
+            errorResult.success = false;
+            errorResult.error = extractErrorMessage(ex);
+            callback.onError(errorResult.error);
+            return errorResult;
+        });
+    }
+
+    private String extractErrorMessage(Throwable throwable) {
+        if (throwable == null) {
+            return "Unknown error";
+        }
+
+        Throwable current = throwable;
+        while (current != null) {
+            String msg = current.getMessage();
+            if (msg != null && !msg.trim().isEmpty()) {
+                return msg;
+            }
+            current = current.getCause();
+        }
+        return throwable.getClass().getSimpleName();
+    }
+
+    /**
+     * Build the params JSON for a send command (shared between daemon and process modes).
+     */
+    private JsonObject buildSendParams(
+            String message, String sessionId, String cwd,
+            String permissionMode, String model,
+            List<ClaudeSession.Attachment> attachments,
+            JsonObject openedFiles, String agentPrompt,
+            Boolean streaming, Boolean disableThinking
+    ) {
+        JsonObject params = new JsonObject();
+        params.addProperty("message", message);
+        params.addProperty("sessionId", sessionId != null ? sessionId : "");
+        params.addProperty("cwd", cwd != null ? cwd : "");
+        params.addProperty("permissionMode", permissionMode != null ? permissionMode : "");
+        params.addProperty("model", model != null ? model : "");
+
+        if (attachments != null && !attachments.isEmpty()) {
+            try {
+                List<Map<String, String>> serializable = new ArrayList<>();
+                for (ClaudeSession.Attachment att : attachments) {
+                    if (att == null) continue;
+                    Map<String, String> obj = new HashMap<>();
+                    obj.put("fileName", att.fileName);
+                    obj.put("mediaType", att.mediaType);
+                    obj.put("data", att.data);
+                    serializable.add(obj);
+                }
+                params.add("attachments", gson.fromJson(gson.toJson(serializable), JsonArray.class));
+            } catch (Exception e) {
+                LOG.debug("Failed to serialize attachments: " + e.getMessage());
+            }
+        }
+
+        if (openedFiles != null && openedFiles.size() > 0) {
+            params.add("openedFiles", openedFiles);
+        }
+        if (agentPrompt != null && !agentPrompt.isEmpty()) {
+            params.addProperty("agentPrompt", agentPrompt);
+        }
+        if (streaming != null) {
+            params.addProperty("streaming", streaming);
+        }
+        if (disableThinking != null && disableThinking) {
+            params.addProperty("disableThinking", true);
+        }
+
+        return params;
     }
 
     // ============================================================================

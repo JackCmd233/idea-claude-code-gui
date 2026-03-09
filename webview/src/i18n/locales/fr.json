@@ -95,6 +95,11 @@
     "basic": {
       "title": "Configuration de base",
       "description": "Configurer le thème de la page, la langue et l'environnement d'exécution Node.js",
+      "tabs": {
+        "appearance": "Apparence",
+        "behavior": "Comportement",
+        "environment": "Environnement"
+      },
       "theme": {
         "label": "Thème de l'interface",
         "system": "Suivre l'IDE",
@@ -148,10 +153,10 @@
         "hint": "When enabled, AI responses will appear character by character in real-time, instead of waiting for the complete response. May consume more resources."
       },
       "autoOpenFile": {
-        "label": "Auto Open File",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When enabled, files will automatically open in the editor when selected in the project tree. When disabled, manual action is required to open files."
+        "label": "Ouverture automatique des fichiers",
+        "enabled": "Activé",
+        "disabled": "Désactivé",
+        "hint": "Lorsqu'activé, sélectionner un fichier dans l'arborescence du projet enverra automatiquement son chemin à l'AI (note : seul le chemin du fichier est envoyé, pas son contenu). Lorsque désactivé, une action manuelle est requise."
       },
       "diffExpanded": {
         "label": "Développer les différences par défaut",
@@ -196,7 +201,7 @@
     "dependency": {
       "title": "Gestion des dépendances SDK",
       "description": "Gérer les dépendances AI SDK. Installez le SDK requis avant la première utilisation.",
-      "installPolicyTip": "Pour réduire la taille du package, les SDKs doivent maintenant être installés manuellement",
+      "installPolicyTip": "Problème d'installation ? Copiez l'erreur vers un CLI AI terminal pour résoudre",
       "claudeSdkName": "Claude Code SDK",
       "claudeSdkDescription": "Requis pour les fonctionnalités Claude AI. Inclut Claude Code SDK et les dépendances associées.",
       "codexSdkName": "Codex SDK",
@@ -214,7 +219,9 @@
       "installSuccess": "{{name}} installé avec succès",
       "installFailed": "Échec de l'installation: {{error}}",
       "uninstallSuccess": "{{name}} a été désinstallé",
-      "uninstallFailed": "Échec de la désinstallation: {{error}}"
+      "uninstallFailed": "Échec de la désinstallation: {{error}}",
+      "updating": "Mise à jour...",
+      "updateSuccess": "{{name}} mis à jour avec succès"
     },
     "usage": "Statistiques d'utilisation",
     "usageDesc": "Afficher votre consommation de Token, statistiques de coûts et analyse des tendances d'utilisation",
@@ -341,6 +348,49 @@
       "localProviderName": "Local settings.json",
       "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
       "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
+      "subscriptionTutorial": {
+        "entry": "Guide du compte d'abonnement",
+        "dialogTitle": "Comment utiliser un compte d'abonnement",
+        "tabAriaLabel": "Onglets du guide du compte d'abonnement",
+        "tabs": {
+          "claude": "Abonnement Claude",
+          "codex": "Abonnement Codex"
+        },
+        "code": {
+          "copy": "Copier le code",
+          "copied": "Copié"
+        },
+        "providers": {
+          "claude": {
+            "title": "Comment utiliser le compte d'abonnement Claude Code",
+            "item1": "Connectez-vous à votre compte d'abonnement Claude Code via le CLI dans le terminal, puis vous pouvez discuter normalement dans le terminal",
+            "item2": "Assurez-vous que le fichier ~/.claude/settings.json et le fichier .env sont vides",
+            "item3": "Redémarrez IDEA et vous pourrez discuter normalement",
+            "emptyConfigCodeLabel": "~/.claude/settings.json",
+            "emptyConfigCode": "{\n  \"env\": {\n  }\n}",
+            "noteTitle": "Remarques sur les cas spéciaux :",
+            "note1": "Si vous avez effectué les étapes ci-dessus mais que le plugin ne répond toujours pas, essayez de définir ~/.claude/settings.json .env sur :",
+            "proxyConfigCodeLabel": "~/.claude/settings.json",
+            "proxyConfigCode": "{\n  \"env\": {\n    \"HTTP_PROXY\": \"http://127.0.0.1:7897\",\n    \"HTTPS_PROXY\": \"http://127.0.0.1:7897\"\n  }\n}",
+            "issuePrefix": "Si cela ne fonctionne toujours pas, signalez un problème sur GitHub : ",
+            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
+          },
+          "codex": {
+            "title": "Configuration du compte d'abonnement Codex",
+            "item1": "Exécutez codex login dans le CLI Codex du terminal et connectez-vous, puis vous pouvez discuter dans le terminal",
+            "item2": "Redémarrez IDEA",
+            "item3": "Vous pouvez maintenant discuter normalement",
+            "emptyConfigCodeLabel": "",
+            "emptyConfigCode": "",
+            "noteTitle": "",
+            "note1": "",
+            "proxyConfigCodeLabel": "",
+            "proxyConfigCode": "",
+            "issuePrefix": "Si cela ne fonctionne toujours pas, signalez un problème sur GitHub : ",
+            "issueUrl": "https://github.com/zhukunpenglinyutong/idea-claude-code-gui/issues"
+          }
+        }
+      },
       "importDialog": {
         "title": "Importer la configuration cc-switch",
         "summary": "{{total}} configurations trouvées, incluant",
@@ -359,6 +409,7 @@
         "addTitle": "Ajouter un fournisseur",
         "editTitle": "Modifier le fournisseur: {{name}}",
         "addDescription": "Configurer les informations du nouveau fournisseur",
+        "securityNotice": "Avis : Tous les paramètres sont stockés localement sur votre ordinateur. Ce projet est 100% open source. Utilisez-le en toute confiance.",
         "editDescription": "Les modifications seront appliquées immédiatement au fournisseur actuel.",
         "providerName": "Nom du fournisseur",
         "providerNamePlaceholder": "par ex., Claude Officiel",
@@ -402,7 +453,9 @@
         "kimi": "Kimi K2",
         "deepseek": "DeepSeek",
         "minimax": "MiniMax",
-        "xiaomi": "Xiaomi MiMo"
+        "xiaomi": "Xiaomi MiMo",
+        "qwen": "Alibaba Qwen",
+        "openrouter": "OpenRouter"
       }
     },
     "comingSoon": "Bientôt disponible...",
@@ -639,6 +692,7 @@
     "last30Days": "30 derniers jours",
     "allTime": "Tout le temps",
     "refreshData": "Actualiser les données",
+    "estimateNotice": "Les statistiques d'utilisation sont des estimations et peuvent être inexactes. Utilisez-les comme référence de tendance, pas comme facturation réelle.",
     "overview": "Vue d'ensemble",
     "models": "Modèles",
     "sessions": "Sessions",
@@ -863,8 +917,7 @@
     "bashGroupBatchExecution": "Batch Execution",
     "bashGroupCompleted": "completed",
     "bashGroupAllCompleted": "All Completed",
-    "bashGroupFailed": "failed",
-    "promptLabel": "Prompt"
+    "bashGroupFailed": "failed"
   },
   "todo": {
     "inProgress": "En cours {{completed}}/{{total}} tâches",
@@ -916,6 +969,10 @@
     "importSkill": "Import Skill",
     "importGlobalSkill": "Import Global Skill",
     "importLocalSkill": "Import Local Skill",
+    "importUserSkill": "Importer un Skill utilisateur",
+    "importRepoSkill": "Importer un Skill de dépôt",
+    "user": "Utilisateur",
+    "repo": "Dépôt",
     "description": "Description",
     "noDescription": "No description",
     "noSkills": "No Skills",
@@ -925,6 +982,8 @@
     "deleteMessage": "Are you sure you want to delete {{scope}} Skill \"{{name}}\"?\n\nThis action cannot be undone.",
     "deleteMessageGlobal": "global",
     "deleteMessageLocal": "local",
+    "deleteMessageUser": "utilisateur",
+    "deleteMessageRepo": "de dépôt",
     "importSuccess": "Successfully imported {{count}} Skills",
     "importSuccessOne": "Successfully imported 1 Skill",
     "importPartialSuccess": "Successfully imported {{count}}/{{total}} Skills, some failed",
@@ -985,6 +1044,53 @@
         "link1": "Que sont les Skills ?",
         "link2": "Création de Skills Personnalisées",
         "link3": "Dépôt d'Exemples de Skills d'Anthropic"
+      },
+      "codex": {
+        "title": "Qu'est-ce que les Skills Codex ?",
+        "overview": {
+          "title": "Aperçu",
+          "description": "Les Skills Codex sont des ensembles d'instructions stockés dans les répertoires .agents/skills/ qui améliorent les performances de Codex pour des tâches spécifiques. Invoquez-les dans le chat en utilisant le préfixe $."
+        },
+        "structure": {
+          "title": "Structure d'une Skill",
+          "description": "Une Skill Codex est un dossier contenant un fichier SKILL.md :",
+          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Required: skill definition file\n    ├── templates/        # Optional: template files\n    └── references/       # Optional: reference materials"
+        },
+        "format": {
+          "title": "Format SKILL.md",
+          "description": "Les fichiers SKILL.md utilisent le format YAML frontmatter + Markdown :",
+          "example": "---\nname: my-skill-name\ndescription: Skill description and when to use\n---\n\n# Skill Instructions\n\nDetailed instruction content...",
+          "hint": "name et description sont des champs obligatoires"
+        },
+        "configuration": {
+          "title": "Configuration",
+          "description": "Où sont stockées les Skills Codex :",
+          "userPath": {
+            "label": "Répertoire utilisateur",
+            "description": "~/.agents/skills/, partagé entre tous les projets"
+          },
+          "repoPath": {
+            "label": "Répertoire du dépôt",
+            "description": "{project-root}/.agents/skills/, disponible uniquement dans le projet actuel"
+          },
+          "configToml": {
+            "label": "Activer/Désactiver",
+            "description": "Contrôlé via les entrées [[skills.config]] dans ~/.codex/config.toml"
+          }
+        },
+        "tips": {
+          "title": "Conseils d'utilisation",
+          "item1": "Assurez-vous que le répertoire de la Skill contient un fichier SKILL.md valide",
+          "item2": "Les noms des Skills doivent utiliser des lettres minuscules, des chiffres et des tirets",
+          "item3": "Tapez le préfixe $ dans le chat pour déclencher l'autocomplétion des Skills",
+          "item4": "Contrôlez le statut de chaque Skill avec les commutateurs activer/désactiver",
+          "item5": "Les Skills désactivées sont enregistrées dans ~/.codex/config.toml"
+        },
+        "learnMore": {
+          "title": "En savoir plus",
+          "description": "Plus d'informations sur les Skills Codex :",
+          "link1": "Documentation des Skills Codex"
+        }
       }
     }
   },

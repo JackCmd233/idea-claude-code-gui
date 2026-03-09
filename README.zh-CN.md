@@ -16,7 +16,7 @@
 
 > AI 声明：本项目绝大部分代码由 Claude Code、Codex、Gemini、GLM 生成；本人还在学习中，非佬
 
-<img width="850" alt="Image" src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/idea/v0.1.0/2.png" />
+<img width="850" alt="Image" src="/docs/img/banner.png" />
 
 ---
 
@@ -123,7 +123,7 @@ MIT
       <a href="https://github.com/zhukunpenglinyutong">
         <img src="https://avatars.githubusercontent.com/u/31264015?size=100" width="100" height="100" alt="zhukunpenglinyutong" style="border-radius: 50%; border: 3px solid #ff6b35; box-shadow: 0 0 15px rgba(255, 107, 53, 0.6);" />
       </a>
-      <div>🔥🔥🔥</div>
+      <div>⭐️⭐️⭐️</div>
     </td>
     <td align="center">
       <a href="https://github.com/M1sury">
@@ -134,7 +134,7 @@ MIT
       <a href="https://github.com/gadfly3173">
         <img src="https://avatars.githubusercontent.com/u/28685179?size=100" width="100" height="100" alt="gadfly3173" style="border-radius: 50%; border: 3px solid #ff6b35; box-shadow: 0 0 15px rgba(255, 107, 53, 0.6);" />
       </a>
-      <div">🔥🔥</div>
+      <div">🔥🔥🔥</div>
     </td>
     <td align="center">
       <a href="https://github.com/song782360037">
@@ -240,6 +240,11 @@ MIT
         <img src="https://avatars.githubusercontent.com/u/45828854?size=100" width="100" height="100" alt="jhaan83" style="border-radius: 50%;" />
       </a>
     </td>
+    <td align="center">
+      <a href="https://github.com/Olexandr1904">
+        <img src="https://avatars.githubusercontent.com/u/12022163?size=100" width="100" height="100" alt="Olexandr1904" style="border-radius: 50%;" />
+      </a>
+    </td>
   </tr>
 </table>
 
@@ -250,26 +255,6 @@ MIT
 如果这个项目对你有帮助，想请作者吃顿肯德基（KFC）或者喝杯咖啡，都是可以的~
 
 [查看赞助者列表 →](./SPONSORS.md)
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/zfb.jpg" width="200" alt="支付宝">
-      <br>
-      <b>支付宝</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/wx.jpg" width="200" alt="微信">
-      <br>
-      <b>微信</b>
-    </td>
-    <td align="center">
-      <img src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/paypal.png" width="200" alt="PayPal">
-      <br>
-      <b>PayPal</b>
-    </td>
-  </tr>
-</table>
 
 ---
 

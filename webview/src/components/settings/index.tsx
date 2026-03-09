@@ -71,10 +71,10 @@ const SettingsView = ({
 }: SettingsViewProps) => {
   const { t } = useTranslation();
   const isCodexMode = currentProvider === 'codex';
-  // Codex mode: allow providers, usage, and mcp tabs, disable other features
-  // Note: 'mcp' is now enabled for Codex as it supports MCP via ~/.codex/config.toml
+  // Codex mode: allow providers, usage, mcp, and skills tabs, disable other features
+  // Note: 'skills' is now enabled for Codex as it supports .agents/skills/ directories
   const disabledTabs = useMemo<SettingsTab[]>(
-    () => (isCodexMode ? ['permissions', 'agents', 'skills'] : []),
+    () => (isCodexMode ? ['permissions', 'agents'] : []),
     [isCodexMode]
   );
   const [currentTab, setCurrentTab] = useState<SettingsTab>(() => {
@@ -323,6 +323,7 @@ const SettingsView = ({
 
   // 提示音配置
   const [soundNotificationEnabled, setSoundNotificationEnabled] = useState<boolean>(false);
+  const [soundOnlyWhenUnfocused, setSoundOnlyWhenUnfocused] = useState<boolean>(false);
   const [selectedSound, setSelectedSound] = useState<string>('default');
   const [customSoundPath, setCustomSoundPath] = useState<string>('');
 
@@ -387,6 +388,7 @@ const SettingsView = ({
     onStreamingEnabledChangeProp,
     onSendShortcutChangeProp,
     setSoundNotificationEnabled,
+    setSoundOnlyWhenUnfocused,
     setSelectedSound,
     setCustomSoundPath,
   });
@@ -557,6 +559,13 @@ const SettingsView = ({
     setSoundNotificationEnabled(enabled);
     const payload = { enabled };
     sendToJava(`set_sound_notification_enabled:${JSON.stringify(payload)}`);
+  };
+
+  // Sound only-when-unfocused toggle change handler
+  const handleSoundOnlyWhenUnfocusedChange = (enabled: boolean) => {
+    setSoundOnlyWhenUnfocused(enabled);
+    const payload = { onlyWhenUnfocused: enabled };
+    sendToJava(`set_sound_only_when_unfocused:${JSON.stringify(payload)}`);
   };
 
   // Selected sound change handler
@@ -730,6 +739,8 @@ const SettingsView = ({
               onDiffExpandedByDefaultChange={setDiffExpandedByDefault}
               soundNotificationEnabled={soundNotificationEnabled}
               onSoundNotificationEnabledChange={handleSoundNotificationEnabledChange}
+              soundOnlyWhenUnfocused={soundOnlyWhenUnfocused}
+              onSoundOnlyWhenUnfocusedChange={handleSoundOnlyWhenUnfocusedChange}
               selectedSound={selectedSound}
               onSelectedSoundChange={handleSelectedSoundChange}
               customSoundPath={customSoundPath}
@@ -764,7 +775,7 @@ const SettingsView = ({
 
           {/* SDK dependency management */}
           <div style={{ display: currentTab === 'dependencies' ? 'block' : 'none' }}>
-            <DependencySection addToast={addToast} />
+            <DependencySection addToast={addToast} isActive={currentTab === 'dependencies'} />
           </div>
 
           {/* Usage statistics */}
@@ -820,7 +831,7 @@ const SettingsView = ({
 
           {/* Skills */}
           <div style={{ display: currentTab === 'skills' ? 'block' : 'none' }}>
-            <SkillsSettingsSection />
+            <SkillsSettingsSection currentProvider={currentProvider} />
           </div>
 
           {/* Other settings */}
