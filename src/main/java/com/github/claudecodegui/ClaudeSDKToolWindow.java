@@ -1,5 +1,7 @@
 package com.github.claudecodegui;
 
+import com.github.claudecodegui.settings.GlobalTabStateCoordinator;
+import com.github.claudecodegui.settings.GlobalTabStateService;
 import com.github.claudecodegui.settings.TabStateService;
 import com.github.claudecodegui.startup.BridgePreloader;
 import com.github.claudecodegui.util.PlatformUtils;
@@ -36,14 +38,14 @@ import java.util.concurrent.TimeoutException;
 public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
 
     private static final Logger LOG = Logger.getInstance(ClaudeSDKToolWindow.class);
-    private static final Map<Project, ClaudeChatWindow> instances = new ConcurrentHashMap<>();
-    // Map to store Content -> ClaudeChatWindow mapping for multi-tab support
-    private static final Map<Content, ClaudeChatWindow> contentToWindowMap = new ConcurrentHashMap<>();
-    private static volatile boolean shutdownHookRegistered = false;
+    private static final String TOOL_WINDOW_ID = "CCG";
     private static final String TAB_NAME_PREFIX = "AI";
-    // Track contents being detached to prevent contentRemoved listener from disposing them
+
+    private static final Map<Project, ClaudeChatWindow> instances = new ConcurrentHashMap<>();
+    private static final Map<Content, ClaudeChatWindow> contentToWindowMap = new ConcurrentHashMap<>();
     private static final Set<Content> detachingContents =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static volatile boolean shutdownHookRegistered = false;
 
     /**
      * Get the chat window instance for the specified project.
@@ -161,14 +163,19 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                     CompletableFuture<Boolean> future = BridgePreloader.waitForBridgeAsync();
                     Boolean ready = future.get(60, TimeUnit.SECONDS);
 
-                    if (project.isDisposed()) return;
+                    if (project.isDisposed()) {
+                        return;
+                    }
 
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        if (project.isDisposed()) return;
+                        if (project.isDisposed()) {
+                            return;
+                        }
 
                         if (ready != null && ready) {
                             LOG.info("[ToolWindow] ai-bridge ready, replacing loading panel with chat window");
-                            replaceLoadingPanelWithChatWindow(project, toolWindow, contentFactory, contentManager, loadingContent);
+                            replaceLoadingPanelWithChatWindow(
+                                    project, toolWindow, contentFactory, contentManager, loadingContent);
                         } else {
                             LOG.error("[ToolWindow] ai-bridge preparation failed");
                             updateLoadingPanelWithError(loadingPanel, "AI Bridge preparation failed. Please restart IDE.");
@@ -178,7 +185,8 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                     LOG.error("[ToolWindow] ai-bridge preparation timeout");
                     ApplicationManager.getApplication().invokeLater(() -> {
                         if (!project.isDisposed()) {
-                            updateLoadingPanelWithError(loadingPanel, "AI Bridge preparation timeout. Please restart IDE.");
+                            updateLoadingPanelWithError(loadingPanel,
+                                    "AI Bridge preparation timeout. Please restart IDE.");
                         }
                     });
                 } catch (Exception e) {
@@ -242,7 +250,7 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 // to a floating window (the ClaudeChatWindow is still alive in the frame)
                 if (isContentDetaching(removedContent)) {
                     LOG.info("[TabManager] Tab detaching to floating window, skipping dispose: "
-                        + removedContent.getDisplayName());
+                            + removedContent.getDisplayName());
                     return;
                 }
 
@@ -254,8 +262,9 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 // to shut down its Daemon process and release resources
                 ClaudeChatWindow window = contentToWindowMap.get(removedContent);
                 if (window != null) {
+                    GlobalTabStateService.getInstance().removeTab(window.getGlobalTabId());
                     LOG.info("[TabManager] Disposing ClaudeChatWindow for removed tab: "
-                        + removedContent.getDisplayName());
+                            + removedContent.getDisplayName());
                     window.dispose();
                 }
             }
@@ -272,12 +281,12 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
                 String tabName = content.getDisplayName();
 
                 int result = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                    project,
-                    ClaudeCodeGuiBundle.message("tab.close.confirm.message", tabName),
-                    ClaudeCodeGuiBundle.message("tab.close.confirm.title"),
-                    ClaudeCodeGuiBundle.message("tab.close.confirm.yes"),
-                    ClaudeCodeGuiBundle.message("tab.close.confirm.no"),
-                    com.intellij.openapi.ui.Messages.getQuestionIcon()
+                        project,
+                        ClaudeCodeGuiBundle.message("tab.close.confirm.message", tabName),
+                        ClaudeCodeGuiBundle.message("tab.close.confirm.title"),
+                        ClaudeCodeGuiBundle.message("tab.close.confirm.yes"),
+                        ClaudeCodeGuiBundle.message("tab.close.confirm.no"),
+                        com.intellij.openapi.ui.Messages.getQuestionIcon()
                 );
 
                 if (result != com.intellij.openapi.ui.Messages.YES) {
@@ -356,24 +365,18 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ContentManager contentManager,
             Content loadingContent
     ) {
-        TabStateService tabStateService = TabStateService.getInstance(project);
-        int savedTabCount = tabStateService.getTabCount();
-        LOG.info("[TabManager] Restoring " + savedTabCount + " tabs from storage");
+        java.util.List<GlobalTabStateService.GlobalTabRecord> savedTabs = getTabsForRestore(project);
+        LOG.info("[TabManager] Restoring " + savedTabs.size() + " tabs from global storage");
 
         ClaudeChatWindow firstChatWindow = new ClaudeChatWindow(project, false);
-
-        String firstTabName;
-        String savedFirstName = tabStateService.getTabName(0);
-        if (savedFirstName != null && !savedFirstName.isEmpty()) {
-            firstTabName = savedFirstName;
-            LOG.info("[TabManager] Restored tab 0 name from storage: " + firstTabName);
-        } else {
-            firstTabName = TAB_NAME_PREFIX + "1";
-        }
+        GlobalTabStateService.GlobalTabRecord firstTab = savedTabs.get(0);
+        String firstTabName = firstTab.getName();
 
         loadingContent.setComponent(firstChatWindow.getContent());
         loadingContent.setDisplayName(firstTabName);
         firstChatWindow.setParentContent(loadingContent);
+        firstChatWindow.setOriginalTabName(firstTabName);
+        firstChatWindow.setGlobalTabId(firstTab.getId());
 
         loadingContent.setDisposer(() -> {
             ClaudeChatWindow window = instances.get(project);
@@ -382,20 +385,15 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             }
         });
 
-        for (int i = 1; i < savedTabCount; i++) {
+        for (int i = 1; i < savedTabs.size(); i++) {
             ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, true);
-
-            String tabName;
-            String savedName = tabStateService.getTabName(i);
-            if (savedName != null && !savedName.isEmpty()) {
-                tabName = savedName;
-                LOG.info("[TabManager] Restored tab " + i + " name from storage: " + tabName);
-            } else {
-                tabName = TAB_NAME_PREFIX + (i + 1);
-            }
+            GlobalTabStateService.GlobalTabRecord tabRecord = savedTabs.get(i);
+            String tabName = tabRecord.getName();
 
             Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
             chatWindow.setParentContent(content);
+            chatWindow.setOriginalTabName(tabName);
+            chatWindow.setGlobalTabId(tabRecord.getId());
             contentManager.addContent(content);
         }
 
@@ -408,26 +406,19 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
             ContentFactory contentFactory,
             ContentManager contentManager
     ) {
-        TabStateService tabStateService = TabStateService.getInstance(project);
-        int savedTabCount = tabStateService.getTabCount();
-        LOG.info("[TabManager] Restoring " + savedTabCount + " tabs from storage");
+        java.util.List<GlobalTabStateService.GlobalTabRecord> savedTabs = getTabsForRestore(project);
+        LOG.info("[TabManager] Restoring " + savedTabs.size() + " tabs from global storage");
 
-        for (int i = 0; i < savedTabCount; i++) {
+        for (int i = 0; i < savedTabs.size(); i++) {
             boolean isFirstTab = (i == 0);
             ClaudeChatWindow chatWindow = new ClaudeChatWindow(project, !isFirstTab);
-
-            String tabName;
-            String savedName = tabStateService.getTabName(i);
-            if (savedName != null && !savedName.isEmpty()) {
-                tabName = savedName;
-                LOG.info("[TabManager] Restored tab " + i + " name from storage: " + tabName);
-            } else {
-                tabName = TAB_NAME_PREFIX + (i + 1);
-            }
+            GlobalTabStateService.GlobalTabRecord tabRecord = savedTabs.get(i);
+            String tabName = tabRecord.getName();
 
             Content content = contentFactory.createContent(chatWindow.getContent(), tabName, false);
             chatWindow.setParentContent(content);
             chatWindow.setOriginalTabName(tabName);
+            chatWindow.setGlobalTabId(tabRecord.getId());
             contentManager.addContent(content);
 
             if (isFirstTab) {
@@ -441,6 +432,35 @@ public class ClaudeSDKToolWindow implements ToolWindowFactory, DumbAware {
         }
 
         updateTabCloseableState(contentManager);
+    }
+
+    /**
+     * 获取用于恢复标签页的全局标签快照。
+     * 启动时会优先执行一次旧项目级状态迁移。
+     *
+     * @param project 当前项目
+     * @return 恢复用的全局标签快照
+     */
+    private java.util.List<GlobalTabStateService.GlobalTabRecord> getTabsForRestore(@NotNull Project project) {
+        GlobalTabStateService globalTabStateService = GlobalTabStateService.getInstance();
+        TabStateService tabStateService = TabStateService.getInstance(project);
+
+        boolean shouldMigrate = tabStateService.hasLegacyTabState()
+                && (!tabStateService.isMigratedToGlobal() || !globalTabStateService.hasTabs());
+        if (shouldMigrate) {
+            long now = System.currentTimeMillis();
+            java.util.List<GlobalTabStateService.GlobalTabRecord> mergedTabs = GlobalTabStateCoordinator.mergeTabs(
+                    globalTabStateService.getTabRecords(),
+                    tabStateService.getAllTabNames(),
+                    tabStateService.getTabCount(),
+                    now
+            );
+            globalTabStateService.replaceTabs(mergedTabs);
+            tabStateService.markMigratedToGlobal();
+            LOG.info("[TabManager] Migrated legacy project tab state to global storage");
+        }
+
+        return globalTabStateService.ensureDefaultTabs(System.currentTimeMillis());
     }
 
     private static synchronized void registerShutdownHook() {

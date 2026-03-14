@@ -1,5 +1,6 @@
 package com.github.claudecodegui;
 
+import com.github.claudecodegui.settings.GlobalTabStateService;
 import com.github.claudecodegui.settings.TabStateService;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -91,6 +92,7 @@ public class RenameTabAction extends AnAction implements DumbAware {
         ClaudeChatWindow chatWindow = ClaudeSDKToolWindow.getChatWindowForContent(selectedContent);
         if (chatWindow != null) {
             chatWindow.setOriginalTabName(newName);
+            GlobalTabStateService.getInstance().renameTab(chatWindow.getGlobalTabId(), newName);
         }
 
         // Get tab index and save to persistent storage
@@ -117,8 +119,9 @@ public class RenameTabAction extends AnAction implements DumbAware {
             return;
         }
 
-        Content selectedContent = toolWindow.getContentManager().getSelectedContent();
-        e.getPresentation().setEnabledAndVisible(selectedContent != null);
+        ContentManager contentManager = toolWindow.getContentManager();
+        boolean hasSelectedContent = contentManager.getSelectedContent() != null;
+        e.getPresentation().setEnabledAndVisible(hasSelectedContent);
     }
 
     /**

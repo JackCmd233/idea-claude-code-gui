@@ -1,5 +1,6 @@
 package com.github.claudecodegui;
 
+import com.github.claudecodegui.settings.GlobalTabStateService;
 import com.intellij.ide.ui.LafManagerListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -28,6 +29,7 @@ import java.awt.event.WindowListener;
 public class DetachedChatFrame extends JFrame {
 
     private static final Logger LOG = Logger.getInstance(DetachedChatFrame.class);
+    private static final String TOOL_WINDOW_ID = "CCG";
 
     private final Project project;
     private final ClaudeChatWindow chatWindow;
@@ -56,13 +58,9 @@ public class DetachedChatFrame extends JFrame {
         }
 
         // Get original tab index before removing from ContentManager
-        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("CCG");
-        if (toolWindow != null) {
-            ContentManager contentManager = toolWindow.getContentManager();
-            this.originalTabIndex = contentManager.getIndexOfContent(content);
-        } else {
-            this.originalTabIndex = -1;
-        }
+        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID);
+        ContentManager contentManager = toolWindow != null ? toolWindow.getContentManager() : null;
+        this.originalTabIndex = contentManager != null ? contentManager.getIndexOfContent(content) : -1;
 
         // Store the original content component
         this.originalContent = chatWindow.getContent();
@@ -219,7 +217,7 @@ public class DetachedChatFrame extends JFrame {
                     return;
                 }
 
-                ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("CCG");
+                ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID);
                 if (toolWindow == null) {
                     LOG.error("[DetachedChatFrame] Tool window not found");
                     Messages.showErrorDialog(
@@ -287,6 +285,7 @@ public class DetachedChatFrame extends JFrame {
 
                 // Dispose the chat window (this will clean up all resources)
                 if (chatWindow != null) {
+                    GlobalTabStateService.getInstance().removeTab(chatWindow.getGlobalTabId());
                     chatWindow.dispose();
                 }
 
@@ -294,7 +293,7 @@ public class DetachedChatFrame extends JFrame {
                 // to prevent phantom tabs on next IDE restart
                 if (!project.isDisposed()) {
                     try {
-                        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("CCG");
+                        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID);
                         if (toolWindow != null) {
                             int actualCount = toolWindow.getContentManager().getContentCount();
                             com.github.claudecodegui.settings.TabStateService.getInstance(project)

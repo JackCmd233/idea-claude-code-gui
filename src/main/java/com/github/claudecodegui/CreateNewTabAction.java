@@ -1,5 +1,6 @@
 package com.github.claudecodegui;
 
+import com.github.claudecodegui.settings.GlobalTabStateService;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -14,11 +15,13 @@ import org.jetbrains.annotations.NotNull;
 
 
 /**
- * Action to create a new chat tab in the Claude Code GUI tool window
+ * Action to create a new chat tab in the Claude Code GUI tool window.
  */
 public class CreateNewTabAction extends AnAction {
 
     private static final Logger LOG = Logger.getInstance(CreateNewTabAction.class);
+
+    private static final String TOOL_WINDOW_ID = "CCG";
 
     public CreateNewTabAction() {
         super(
@@ -41,7 +44,7 @@ public class CreateNewTabAction extends AnAction {
             return;
         }
 
-        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("CCG");
+        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID);
         if (toolWindow == null) {
             LOG.error("[CreateNewTabAction] Tool window not found");
             return;
@@ -50,18 +53,23 @@ public class CreateNewTabAction extends AnAction {
         // Create a new chat window instance with skipRegister=true (don't replace the main instance)
         ClaudeChatWindow newChatWindow = new ClaudeChatWindow(project, true);
 
-        // Create a tab name in the format "AIN"
+        // Generate the next available tab name (format: "AIN")
         String tabName = ClaudeSDKToolWindow.getNextTabName(toolWindow);
 
-        // Create and add the new tab content
+        // Create and configure the new tab content
         ContentFactory contentFactory = ContentFactory.getInstance();
         Content content = contentFactory.createContent(newChatWindow.getContent(), tabName, false);
         content.setCloseable(true);
         newChatWindow.setParentContent(content);
 
+        // Add the content to the tool window
         ContentManager contentManager = toolWindow.getContentManager();
         contentManager.addContent(content);
         contentManager.setSelectedContent(content);
+
+        // Create global tab record and associate with the chat window
+        GlobalTabStateService.GlobalTabRecord globalTab = GlobalTabStateService.getInstance().createTab(tabName);
+        newChatWindow.setGlobalTabId(globalTab.getId());
 
         // Ensure the tool window is visible
         toolWindow.show(null);
@@ -71,7 +79,6 @@ public class CreateNewTabAction extends AnAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        // Only enable this action when there's a valid project
         e.getPresentation().setEnabled(e.getProject() != null);
     }
 }

@@ -78,6 +78,8 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'javazoom:jlayer:1.0.1'
     implementation 'org.snakeyaml:snakeyaml-engine:3.0.1'
+    // 中文注释：让 IDE 在源码分析阶段也能解析 JUnit 测试类型，避免测试文件被误标红。
+    compileOnly 'junit:junit:4.13.2'
     testImplementation 'junit:junit:4.13.2'
 
     intellijPlatform {

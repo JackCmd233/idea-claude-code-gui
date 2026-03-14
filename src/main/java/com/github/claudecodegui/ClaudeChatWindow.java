@@ -47,6 +47,7 @@ public class ClaudeChatWindow {
 
     private Content parentContent;
     private String originalTabName;
+    private String globalTabId;
     private volatile String sessionId = null;
 
     private JBCefBrowser browser;
@@ -298,6 +299,24 @@ public class ClaudeChatWindow {
 
     public boolean isDisposed() {
         return disposed;
+    }
+
+    /**
+     * 获取当前聊天标签对应的全局标签 ID。
+     *
+     * @return 全局标签稳定 ID
+     */
+    public String getGlobalTabId() {
+        return globalTabId;
+    }
+
+    /**
+     * 设置当前聊天标签对应的全局标签 ID。
+     *
+     * @param globalTabId 全局标签稳定 ID
+     */
+    public void setGlobalTabId(String globalTabId) {
+        this.globalTabId = globalTabId;
     }
 
     public boolean isInitialized() {

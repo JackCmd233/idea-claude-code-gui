@@ -11,7 +11,8 @@ import java.util.Map;
 
 /**
  * Tab State Persistence Service.
- * Saves and restores custom tab names.
+ * Saves and restores custom tab names at the project level.
+ * This is the legacy service; new code should prefer GlobalTabStateService.
  */
 @State(
     name = "ClaudeCodeTabState",
@@ -88,6 +89,7 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
 
     /**
      * Update tab indexes when a tab is removed (re-maps all indexes accordingly).
+     *
      * @param removedIndex the index of the removed tab
      */
     public void onTabRemoved(int removedIndex) {
@@ -98,11 +100,8 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
         Map<Integer, String> newMap = new HashMap<>();
         for (Map.Entry<Integer, String> entry : myState.tabNames.entrySet()) {
             int oldIndex = entry.getKey();
-            if (oldIndex > removedIndex) {
-                newMap.put(oldIndex - 1, entry.getValue());
-            } else {
-                newMap.put(oldIndex, entry.getValue());
-            }
+            int newIndex = oldIndex > removedIndex ? oldIndex - 1 : oldIndex;
+            newMap.put(newIndex, entry.getValue());
         }
         myState.tabNames = newMap;
 
@@ -111,7 +110,8 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
             myState.tabCount--;
         }
 
-        LOG.info("[TabStateService] Updated tab indexes after removal of index: " + removedIndex + ", new count: " + myState.tabCount);
+        LOG.info("[TabStateService] Updated tab indexes after removal of index: "
+                + removedIndex + ", new count: " + myState.tabCount);
     }
 
     /**
@@ -132,6 +132,32 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
     }
 
     /**
+     * 判断当前项目是否存在可迁移的旧标签数据。
+     *
+     * @return true 表示存在旧标签状态
+     */
+    public boolean hasLegacyTabState() {
+        return !myState.tabNames.isEmpty() || myState.tabCount > 1;
+    }
+
+    /**
+     * 是否已完成全局标签迁移。
+     *
+     * @return true 表示已迁移
+     */
+    public boolean isMigratedToGlobal() {
+        return myState.migratedToGlobal;
+    }
+
+    /**
+     * 标记当前项目已完成全局标签迁移。
+     */
+    public void markMigratedToGlobal() {
+        myState.migratedToGlobal = true;
+        LOG.info("[TabStateService] Marked project tab state as migrated to global");
+    }
+
+    /**
      * Persistent state class.
      */
     public static class State {
@@ -144,5 +170,10 @@ public final class TabStateService implements PersistentStateComponent<TabStateS
          * Number of tabs.
          */
         public int tabCount = 1;
+
+        /**
+         * 是否已迁移到全局标签状态。
+         */
+        public boolean migratedToGlobal = false;
     }
 }
