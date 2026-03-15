@@ -12,6 +12,11 @@ export interface EnvironmentTabProps {
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
+  canUseProjectConfigActions?: boolean;
+  onLoadWorkingDirectoryFromGlobal?: () => void;
+  onSaveWorkingDirectoryToGlobal?: () => void;
+  syncingWorkingDirectoryFromGlobal?: boolean;
+  syncingWorkingDirectoryToGlobal?: boolean;
 }
 
 const EnvironmentTab = ({
@@ -25,6 +30,11 @@ const EnvironmentTab = ({
   onWorkingDirectoryChange = () => {},
   onSaveWorkingDirectory = () => {},
   savingWorkingDirectory = false,
+  canUseProjectConfigActions = true,
+  onLoadWorkingDirectoryFromGlobal = () => {},
+  onSaveWorkingDirectoryToGlobal = () => {},
+  syncingWorkingDirectoryFromGlobal = false,
+  syncingWorkingDirectoryToGlobal = false,
 }: EnvironmentTabProps) => {
   const { t } = useTranslation();
 
@@ -123,6 +133,30 @@ const EnvironmentTab = ({
             {t('settings.basic.workingDirectory.hint')}
           </span>
         </small>
+        {canUseProjectConfigActions && (
+          <div className={styles.nodePathInputWrapper}>
+            <button
+              className={styles.saveBtn}
+              onClick={onLoadWorkingDirectoryFromGlobal}
+              disabled={syncingWorkingDirectoryFromGlobal}
+            >
+              {syncingWorkingDirectoryFromGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              从全局配置读取
+            </button>
+            <button
+              className={styles.saveBtn}
+              onClick={onSaveWorkingDirectoryToGlobal}
+              disabled={syncingWorkingDirectoryToGlobal}
+            >
+              {syncingWorkingDirectoryToGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              保存到全局配置
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

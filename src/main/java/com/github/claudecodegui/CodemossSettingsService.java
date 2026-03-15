@@ -6,6 +6,8 @@ import com.github.claudecodegui.model.PromptScope;
 import com.github.claudecodegui.settings.*;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.intellij.openapi.diagnostic.Logger;
@@ -33,11 +35,19 @@ public class CodemossSettingsService {
     private static final int CONFIG_VERSION = 2;
     private static final String CODEX_SANDBOX_MODE_WORKSPACE_WRITE = "workspace-write";
     private static final String CODEX_SANDBOX_MODE_DANGER_FULL_ACCESS = "danger-full-access";
+    private static final String STREAMING_ENABLED_KEY = "streamingEnabled";
+    private static final String AUTO_OPEN_FILE_ENABLED_KEY = "autoOpenFileEnabled";
+    private static final String CUSTOM_WORKING_DIRECTORY_KEY = "customWorkingDirectory";
+    private static final String CODEX_SANDBOX_MODE_KEY = "codexSandboxMode";
+    private static final String COMMIT_PROMPT_KEY = "commitPrompt";
+    private static final String PROJECT_MCP_SERVERS_KEY = "mcpServers";
+    private static final String PROJECT_CODEX_MCP_SERVERS_KEY = "codexMcpServers";
 
     private final Gson gson;
 
     // Managers
     private final ConfigPathManager pathManager;
+    private final ProjectConfigManager projectConfigManager;
     private final ClaudeSettingsManager claudeSettingsManager;
     private final CodexSettingsManager codexSettingsManager;
     private final CodexMcpServerManager codexMcpServerManager;
@@ -53,6 +63,7 @@ public class CodemossSettingsService {
 
         // Initialize ConfigPathManager
         this.pathManager = new ConfigPathManager();
+        this.projectConfigManager = new ProjectConfigManager(gson, pathManager);
 
         // Initialize ClaudeSettingsManager
         this.claudeSettingsManager = new ClaudeSettingsManager(gson, pathManager);
@@ -298,15 +309,65 @@ public class CodemossSettingsService {
     // ==================== Working Directory Management ====================
 
     public String getCustomWorkingDirectory(String projectPath) throws IOException {
-        return workingDirectoryManager.getCustomWorkingDirectory(projectPath);
+        if (!hasProjectPath(projectPath)) {
+            return readLegacyWorkingDirectory(readConfig(), null);
+        }
+
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        if (projectConfig.has(CUSTOM_WORKING_DIRECTORY_KEY) && !projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).isJsonNull()) {
+            return projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).getAsString();
+        }
+
+        return null;
     }
 
     public void setCustomWorkingDirectory(String projectPath, String customWorkingDir) throws IOException {
-        workingDirectoryManager.setCustomWorkingDirectory(projectPath, customWorkingDir);
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+
+        if (customWorkingDir == null || customWorkingDir.trim().isEmpty()) {
+            projectConfig.remove(CUSTOM_WORKING_DIRECTORY_KEY);
+        } else {
+            projectConfig.addProperty(CUSTOM_WORKING_DIRECTORY_KEY, customWorkingDir.trim());
+        }
+
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
     }
 
     public Map<String, String> getAllWorkingDirectories() throws IOException {
         return workingDirectoryManager.getAllWorkingDirectories();
+    }
+
+    public String loadCustomWorkingDirectoryFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = projectConfigManager.overwriteProjectBasicsFromGlobal(projectPath, readConfig());
+        return projectConfig.has(CUSTOM_WORKING_DIRECTORY_KEY) && !projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).isJsonNull()
+                ? projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).getAsString()
+                : null;
+    }
+
+    public void saveCustomWorkingDirectoryToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        JsonObject config = readConfig();
+
+        JsonObject workingDirectories = ensureObject(config, "workingDirectories");
+        if (projectConfig.has(CUSTOM_WORKING_DIRECTORY_KEY) && !projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).isJsonNull()) {
+            workingDirectories.addProperty("default", projectConfig.get(CUSTOM_WORKING_DIRECTORY_KEY).getAsString());
+        } else {
+            workingDirectories.remove("default");
+        }
+
+        writeConfig(config);
+    }
+
+    public boolean isProjectConfigInitialized(String projectPath) {
+        return hasProjectPath(projectPath) && projectConfigManager.isProjectConfigInitialized(projectPath);
+    }
+
+    public JsonObject ensureProjectConfigInitialized(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        return projectConfigManager.ensureProjectConfigInitialized(projectPath, readConfig());
     }
 
     // ==================== Commit Prompt Config Management ====================
@@ -317,14 +378,30 @@ public class CodemossSettingsService {
      * @return commit prompt
      */
     public String getCommitPrompt() throws IOException {
-        JsonObject config = readConfig();
+        return getCommitPrompt(null);
+    }
 
-        // Check for commitPrompt config
-        if (config.has("commitPrompt")) {
-            return config.get("commitPrompt").getAsString();
+    /**
+     * 获取项目级 Commit Prompt。
+     *
+     * @param projectPath 项目路径
+     * @return Commit Prompt
+     * @throws IOException 配置读取失败
+     */
+    public String getCommitPrompt(String projectPath) throws IOException {
+        if (hasProjectPath(projectPath)) {
+            JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+            if (projectConfig.has(COMMIT_PROMPT_KEY) && !projectConfig.get(COMMIT_PROMPT_KEY).isJsonNull()) {
+                return projectConfig.get(COMMIT_PROMPT_KEY).getAsString();
+            }
         }
 
-        // Return default value (from i18n resource bundle)
+        JsonObject config = readConfig();
+
+        if (config.has(COMMIT_PROMPT_KEY)) {
+            return config.get(COMMIT_PROMPT_KEY).getAsString();
+        }
+
         return ClaudeCodeGuiBundle.message("commit.defaultPrompt");
     }
 
@@ -335,12 +412,58 @@ public class CodemossSettingsService {
      */
     public void setCommitPrompt(String prompt) throws IOException {
         JsonObject config = readConfig();
-
-        // Save config
-        config.addProperty("commitPrompt", prompt);
-
+        config.addProperty(COMMIT_PROMPT_KEY, prompt);
         writeConfig(config);
-        LOG.info("[CodemossSettings] Set commit prompt: " + prompt);
+        LOG.info("[CodemossSettings] Set global commit prompt");
+    }
+
+    /**
+     * 保存项目级 Commit Prompt。
+     *
+     * @param projectPath 项目路径
+     * @param prompt commit prompt
+     * @throws IOException 配置写入失败
+     */
+    public void setCommitPrompt(String projectPath, String prompt) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        projectConfig.addProperty(COMMIT_PROMPT_KEY, prompt);
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
+        LOG.info("[CodemossSettings] Set project commit prompt for: " + projectPath);
+    }
+
+    /**
+     * 从全局配置覆盖项目 Commit Prompt。
+     *
+     * @param projectPath 项目路径
+     * @return 覆盖后的值
+     * @throws IOException 配置读写失败
+     */
+    public String loadCommitPromptFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = projectConfigManager.overwriteProjectBasicsFromGlobal(projectPath, readConfig());
+        if (projectConfig.has(COMMIT_PROMPT_KEY) && !projectConfig.get(COMMIT_PROMPT_KEY).isJsonNull()) {
+            return projectConfig.get(COMMIT_PROMPT_KEY).getAsString();
+        }
+        return ClaudeCodeGuiBundle.message("commit.defaultPrompt");
+    }
+
+    /**
+     * 将项目 Commit Prompt 提升为全局默认值。
+     *
+     * @param projectPath 项目路径
+     * @throws IOException 配置写入失败
+     */
+    public void saveCommitPromptToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        JsonObject config = readConfig();
+        String prompt = projectConfig.has(COMMIT_PROMPT_KEY) && !projectConfig.get(COMMIT_PROMPT_KEY).isJsonNull()
+                ? projectConfig.get(COMMIT_PROMPT_KEY).getAsString()
+                : ClaudeCodeGuiBundle.message("commit.defaultPrompt");
+        config.addProperty(COMMIT_PROMPT_KEY, prompt);
+        writeConfig(config);
+        LOG.info("[CodemossSettings] Saved project commit prompt to global for: " + projectPath);
     }
 
     // ==================== Streaming Config Management ====================
@@ -352,26 +475,16 @@ public class CodemossSettingsService {
      * @return whether streaming is enabled
      */
     public boolean getStreamingEnabled(String projectPath) throws IOException {
-        JsonObject config = readConfig();
-
-        // Check for streaming config
-        if (!config.has("streaming")) {
-            return true;
+        if (!hasProjectPath(projectPath)) {
+            return readLegacyBooleanDefault(readConfig(), "streaming", true);
         }
 
-        JsonObject streaming = config.getAsJsonObject("streaming");
-
-        // Check project-specific config first
-        if (projectPath != null && streaming.has(projectPath)) {
-            return streaming.get(projectPath).getAsBoolean();
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        if (projectConfig.has(STREAMING_ENABLED_KEY) && !projectConfig.get(STREAMING_ENABLED_KEY).isJsonNull()) {
+            return projectConfig.get(STREAMING_ENABLED_KEY).getAsBoolean();
         }
 
-        // Fall back to global default if no project-specific config
-        if (streaming.has("default")) {
-            return streaming.get("default").getAsBoolean();
-        }
-
-        return true;
+        return readLegacyBooleanDefault(readConfig(), "streaming", true);
     }
 
     /**
@@ -381,25 +494,31 @@ public class CodemossSettingsService {
      * @param enabled     whether to enable
      */
     public void setStreamingEnabled(String projectPath, boolean enabled) throws IOException {
-        JsonObject config = readConfig();
-
-        // Ensure streaming object exists
-        JsonObject streaming;
-        if (config.has("streaming")) {
-            streaming = config.getAsJsonObject("streaming");
-        } else {
-            streaming = new JsonObject();
-            config.add("streaming", streaming);
-        }
-
-        // Save project-specific config (also serves as default)
-        if (projectPath != null) {
-            streaming.addProperty(projectPath, enabled);
-        }
-        streaming.addProperty("default", enabled);
-
-        writeConfig(config);
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        projectConfig.addProperty(STREAMING_ENABLED_KEY, enabled);
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
         LOG.info("[CodemossSettings] Set streaming enabled to " + enabled + " for project: " + projectPath);
+    }
+
+    public boolean loadStreamingEnabledFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = projectConfigManager.overwriteProjectBasicsFromGlobal(projectPath, readConfig());
+        return projectConfig.has(STREAMING_ENABLED_KEY)
+                ? projectConfig.get(STREAMING_ENABLED_KEY).getAsBoolean()
+                : true;
+    }
+
+    public void saveStreamingEnabledToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        boolean enabled = projectConfig.has(STREAMING_ENABLED_KEY)
+                ? projectConfig.get(STREAMING_ENABLED_KEY).getAsBoolean()
+                : true;
+
+        JsonObject config = readConfig();
+        upsertLegacyBooleanDefault(config, "streaming", enabled);
+        writeConfig(config);
     }
 
     // ==================== Auto Open File Config Management ====================
@@ -411,26 +530,16 @@ public class CodemossSettingsService {
      * @return whether auto-open file is enabled
      */
     public boolean getAutoOpenFileEnabled(String projectPath) throws IOException {
-        JsonObject config = readConfig();
-
-        // Check for autoOpenFile config
-        if (!config.has("autoOpenFile")) {
-            return true;
+        if (!hasProjectPath(projectPath)) {
+            return readLegacyBooleanDefault(readConfig(), "autoOpenFile", true);
         }
 
-        JsonObject autoOpenFile = config.getAsJsonObject("autoOpenFile");
-
-        // Check project-specific config first
-        if (projectPath != null && autoOpenFile.has(projectPath)) {
-            return autoOpenFile.get(projectPath).getAsBoolean();
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        if (projectConfig.has(AUTO_OPEN_FILE_ENABLED_KEY) && !projectConfig.get(AUTO_OPEN_FILE_ENABLED_KEY).isJsonNull()) {
+            return projectConfig.get(AUTO_OPEN_FILE_ENABLED_KEY).getAsBoolean();
         }
 
-        // Fall back to global default if no project-specific config
-        if (autoOpenFile.has("default")) {
-            return autoOpenFile.get("default").getAsBoolean();
-        }
-
-        return true;
+        return readLegacyBooleanDefault(readConfig(), "autoOpenFile", true);
     }
 
     /**
@@ -440,25 +549,31 @@ public class CodemossSettingsService {
      * @param enabled     whether to enable
      */
     public void setAutoOpenFileEnabled(String projectPath, boolean enabled) throws IOException {
-        JsonObject config = readConfig();
-
-        // Ensure autoOpenFile object exists
-        JsonObject autoOpenFile;
-        if (config.has("autoOpenFile")) {
-            autoOpenFile = config.getAsJsonObject("autoOpenFile");
-        } else {
-            autoOpenFile = new JsonObject();
-            config.add("autoOpenFile", autoOpenFile);
-        }
-
-        // Save project-specific config (also serves as default)
-        if (projectPath != null) {
-            autoOpenFile.addProperty(projectPath, enabled);
-        }
-        autoOpenFile.addProperty("default", enabled);
-
-        writeConfig(config);
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        projectConfig.addProperty(AUTO_OPEN_FILE_ENABLED_KEY, enabled);
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
         LOG.info("[CodemossSettings] Set auto open file enabled to " + enabled + " for project: " + projectPath);
+    }
+
+    public boolean loadAutoOpenFileEnabledFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = projectConfigManager.overwriteProjectBasicsFromGlobal(projectPath, readConfig());
+        return projectConfig.has(AUTO_OPEN_FILE_ENABLED_KEY)
+                ? projectConfig.get(AUTO_OPEN_FILE_ENABLED_KEY).getAsBoolean()
+                : true;
+    }
+
+    public void saveAutoOpenFileEnabledToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        boolean enabled = projectConfig.has(AUTO_OPEN_FILE_ENABLED_KEY)
+                ? projectConfig.get(AUTO_OPEN_FILE_ENABLED_KEY).getAsBoolean()
+                : true;
+
+        JsonObject config = readConfig();
+        upsertLegacyBooleanDefault(config, "autoOpenFile", enabled);
+        writeConfig(config);
     }
 
     // ==================== Codex Sandbox Mode Config Management ====================
@@ -470,26 +585,18 @@ public class CodemossSettingsService {
      * @return sandbox mode (workspace-write or danger-full-access)
      */
     public String getCodexSandboxMode(String projectPath) throws IOException {
-        JsonObject config = readConfig();
-        String defaultMode = getDefaultCodexSandboxMode();
-
-        if (!config.has("codexSandboxMode")) {
-            return defaultMode;
+        if (!hasProjectPath(projectPath)) {
+            return readLegacyStringDefault(readConfig(), CODEX_SANDBOX_MODE_KEY, getDefaultCodexSandboxMode());
         }
 
-        JsonObject sandboxConfig = config.getAsJsonObject("codexSandboxMode");
-
-        if (projectPath != null && sandboxConfig.has(projectPath)) {
-            String mode = sandboxConfig.get(projectPath).getAsString();
-            return isValidCodexSandboxMode(mode) ? mode : defaultMode;
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        if (projectConfig.has(CODEX_SANDBOX_MODE_KEY) && !projectConfig.get(CODEX_SANDBOX_MODE_KEY).isJsonNull()) {
+            String mode = projectConfig.get(CODEX_SANDBOX_MODE_KEY).getAsString();
+            return isValidCodexSandboxMode(mode) ? mode : getDefaultCodexSandboxMode();
         }
 
-        if (sandboxConfig.has("default")) {
-            String mode = sandboxConfig.get("default").getAsString();
-            return isValidCodexSandboxMode(mode) ? mode : defaultMode;
-        }
-
-        return defaultMode;
+        String globalMode = readLegacyStringDefault(readConfig(), CODEX_SANDBOX_MODE_KEY, getDefaultCodexSandboxMode());
+        return isValidCodexSandboxMode(globalMode) ? globalMode : getDefaultCodexSandboxMode();
     }
 
     /**
@@ -503,23 +610,28 @@ public class CodemossSettingsService {
             throw new IllegalArgumentException("Invalid Codex sandbox mode: " + sandboxMode);
         }
 
-        JsonObject config = readConfig();
-
-        JsonObject sandboxConfig;
-        if (config.has("codexSandboxMode")) {
-            sandboxConfig = config.getAsJsonObject("codexSandboxMode");
-        } else {
-            sandboxConfig = new JsonObject();
-            config.add("codexSandboxMode", sandboxConfig);
-        }
-
-        if (projectPath != null) {
-            sandboxConfig.addProperty(projectPath, sandboxMode);
-        }
-        sandboxConfig.addProperty("default", sandboxMode);
-
-        writeConfig(config);
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        projectConfig.addProperty(CODEX_SANDBOX_MODE_KEY, sandboxMode);
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
         LOG.info("[CodemossSettings] Set Codex sandbox mode to " + sandboxMode + " for project: " + projectPath);
+    }
+
+    public String loadCodexSandboxModeFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        JsonObject projectConfig = projectConfigManager.overwriteProjectBasicsFromGlobal(projectPath, readConfig());
+        String sandboxMode = projectConfig.has(CODEX_SANDBOX_MODE_KEY)
+                ? projectConfig.get(CODEX_SANDBOX_MODE_KEY).getAsString()
+                : getDefaultCodexSandboxMode();
+        return isValidCodexSandboxMode(sandboxMode) ? sandboxMode : getDefaultCodexSandboxMode();
+    }
+
+    public void saveCodexSandboxModeToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        String sandboxMode = getCodexSandboxMode(projectPath);
+        JsonObject config = readConfig();
+        upsertLegacyStringDefault(config, CODEX_SANDBOX_MODE_KEY, sandboxMode);
+        writeConfig(config);
     }
 
     private boolean isValidCodexSandboxMode(String mode) {
@@ -529,6 +641,76 @@ public class CodemossSettingsService {
 
     private String getDefaultCodexSandboxMode() {
         return CODEX_SANDBOX_MODE_WORKSPACE_WRITE;
+    }
+
+    private boolean hasProjectPath(String projectPath) {
+        return projectPath != null && !projectPath.trim().isEmpty();
+    }
+
+    private void requireProjectPath(String projectPath) {
+        if (!hasProjectPath(projectPath)) {
+            throw new IllegalArgumentException("Project path is required");
+        }
+    }
+
+    private JsonObject ensureObject(JsonObject root, String key) {
+        if (!root.has(key) || !root.get(key).isJsonObject()) {
+            JsonObject child = new JsonObject();
+            root.add(key, child);
+            return child;
+        }
+        return root.getAsJsonObject(key);
+    }
+
+    private boolean readLegacyBooleanDefault(JsonObject config, String key, boolean defaultValue) {
+        if (!config.has(key) || !config.get(key).isJsonObject()) {
+            return defaultValue;
+        }
+
+        JsonObject configObject = config.getAsJsonObject(key);
+        if (configObject.has("default") && !configObject.get("default").isJsonNull()) {
+            return configObject.get("default").getAsBoolean();
+        }
+        return defaultValue;
+    }
+
+    private String readLegacyStringDefault(JsonObject config, String key, String defaultValue) {
+        if (!config.has(key) || !config.get(key).isJsonObject()) {
+            return defaultValue;
+        }
+
+        JsonObject configObject = config.getAsJsonObject(key);
+        if (configObject.has("default") && !configObject.get("default").isJsonNull()) {
+            return configObject.get("default").getAsString();
+        }
+        return defaultValue;
+    }
+
+    private String readLegacyWorkingDirectory(JsonObject config, String projectPath) {
+        if (!config.has("workingDirectories") || !config.get("workingDirectories").isJsonObject()) {
+            return null;
+        }
+
+        JsonObject workingDirectories = config.getAsJsonObject("workingDirectories");
+        if (hasProjectPath(projectPath)
+                && workingDirectories.has(projectPath)
+                && !workingDirectories.get(projectPath).isJsonNull()) {
+            return workingDirectories.get(projectPath).getAsString();
+        }
+        if (workingDirectories.has("default") && !workingDirectories.get("default").isJsonNull()) {
+            return workingDirectories.get("default").getAsString();
+        }
+        return null;
+    }
+
+    private void upsertLegacyBooleanDefault(JsonObject config, String key, boolean value) {
+        JsonObject configObject = ensureObject(config, key);
+        configObject.addProperty("default", value);
+    }
+
+    private void upsertLegacyStringDefault(JsonObject config, String key, String value) {
+        JsonObject configObject = ensureObject(config, key);
+        configObject.addProperty("default", value);
     }
 
     // ==================== Provider Management ====================
@@ -588,23 +770,55 @@ public class CodemossSettingsService {
     // ==================== MCP Server Management ====================
 
     public List<JsonObject> getMcpServers() throws IOException {
-        return mcpServerManager.getMcpServers();
+        return getGlobalClaudeMcpSource();
     }
 
     public List<JsonObject> getMcpServersWithProjectPath(String projectPath) throws IOException {
-        return mcpServerManager.getMcpServersWithProjectPath(projectPath);
+        if (!hasProjectPath(projectPath)) {
+            return getGlobalClaudeMcpSource();
+        }
+
+        List<JsonObject> globalServers = getGlobalClaudeMcpSource();
+        JsonElement projectOverrides = projectConfigManager.getProjectMcpServers(projectPath);
+        return mergeProjectMcpServers(globalServers, projectOverrides);
     }
 
     public void upsertMcpServer(JsonObject server) throws IOException {
-        mcpServerManager.upsertMcpServer(server);
+        replaceGlobalMcpServer("mcpServers", server);
+        mcpServerManager.replaceAllServers(getGlobalClaudeMcpSource(), null);
     }
 
     public void upsertMcpServer(JsonObject server, String projectPath) throws IOException {
-        mcpServerManager.upsertMcpServer(server, projectPath);
+        requireProjectPath(projectPath);
+        upsertProjectMcpServer(projectPath, PROJECT_MCP_SERVERS_KEY, server, getMcpServers());
+        syncProjectClaudeMcp(projectPath);
     }
 
     public boolean deleteMcpServer(String serverId) throws IOException {
-        return mcpServerManager.deleteMcpServer(serverId);
+        boolean deleted = deleteGlobalMcpServer("mcpServers", serverId);
+        if (deleted) {
+            mcpServerManager.replaceAllServers(getGlobalClaudeMcpSource(), null);
+        }
+        return deleted;
+    }
+
+    public boolean deleteMcpServer(String serverId, String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        boolean deleted = deleteProjectMcpServer(projectPath, PROJECT_MCP_SERVERS_KEY, serverId, getMcpServers());
+        syncProjectClaudeMcp(projectPath);
+        return deleted;
+    }
+
+    public void loadProjectMcpServersFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        clearProjectMcpOverrides(projectPath, PROJECT_MCP_SERVERS_KEY);
+        syncProjectClaudeMcp(projectPath);
+    }
+
+    public void saveProjectMcpServersToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        writeGlobalMcpSource("mcpServers", getMcpServersWithProjectPath(projectPath));
+        mcpServerManager.replaceAllServers(getGlobalClaudeMcpSource(), projectPath);
     }
 
     public Map<String, Object> validateMcpServer(JsonObject server) {
@@ -618,19 +832,297 @@ public class CodemossSettingsService {
     }
 
     public List<JsonObject> getCodexMcpServers() throws IOException {
-        return codexMcpServerManager.getMcpServers();
+        return getGlobalCodexMcpSource();
+    }
+
+    public List<JsonObject> getCodexMcpServers(String projectPath) throws IOException {
+        if (!hasProjectPath(projectPath)) {
+            return getGlobalCodexMcpSource();
+        }
+
+        List<JsonObject> globalServers = getGlobalCodexMcpSource();
+        JsonElement projectOverrides = projectConfigManager.getProjectCodexMcpServers(projectPath);
+        return mergeProjectMcpServers(globalServers, projectOverrides);
     }
 
     public void upsertCodexMcpServer(JsonObject server) throws IOException {
-        codexMcpServerManager.upsertMcpServer(server);
+        replaceGlobalMcpServer("codexMcpServers", server);
+        codexMcpServerManager.replaceAllServers(getGlobalCodexMcpSource());
+    }
+
+    public void upsertCodexMcpServer(JsonObject server, String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        upsertProjectMcpServer(projectPath, PROJECT_CODEX_MCP_SERVERS_KEY, server, getCodexMcpServers());
+        syncProjectCodexMcp(projectPath);
     }
 
     public boolean deleteCodexMcpServer(String serverId) throws IOException {
-        return codexMcpServerManager.deleteMcpServer(serverId);
+        boolean deleted = deleteGlobalMcpServer("codexMcpServers", serverId);
+        if (deleted) {
+            codexMcpServerManager.replaceAllServers(getGlobalCodexMcpSource());
+        }
+        return deleted;
+    }
+
+    public boolean deleteCodexMcpServer(String serverId, String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        boolean deleted = deleteProjectMcpServer(projectPath, PROJECT_CODEX_MCP_SERVERS_KEY, serverId, getCodexMcpServers());
+        syncProjectCodexMcp(projectPath);
+        return deleted;
+    }
+
+    public void loadProjectCodexMcpServersFromGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        clearProjectMcpOverrides(projectPath, PROJECT_CODEX_MCP_SERVERS_KEY);
+        syncProjectCodexMcp(projectPath);
+    }
+
+    public void saveProjectCodexMcpServersToGlobal(String projectPath) throws IOException {
+        requireProjectPath(projectPath);
+        writeGlobalMcpSource("codexMcpServers", getCodexMcpServers(projectPath));
+        codexMcpServerManager.replaceAllServers(getGlobalCodexMcpSource());
     }
 
     public Map<String, Object> validateCodexMcpServer(JsonObject server) {
         return codexMcpServerManager.validateMcpServer(server);
+    }
+
+    private List<JsonObject> mergeProjectMcpServers(List<JsonObject> globalServers, JsonElement projectOverridesElement) {
+        Map<String, JsonObject> merged = new java.util.LinkedHashMap<>();
+        for (JsonObject globalServer : globalServers) {
+            if (!globalServer.has("id")) {
+                continue;
+            }
+            merged.put(globalServer.get("id").getAsString(), globalServer.deepCopy());
+        }
+
+        if (projectOverridesElement != null && projectOverridesElement.isJsonArray()) {
+            JsonArray overrides = projectOverridesElement.getAsJsonArray();
+            for (JsonElement element : overrides) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject override = element.getAsJsonObject();
+                if (!override.has("id")) {
+                    continue;
+                }
+
+                String serverId = override.get("id").getAsString();
+                boolean deleted = override.has("deleted") && override.get("deleted").getAsBoolean();
+                if (deleted) {
+                    merged.remove(serverId);
+                    continue;
+                }
+
+                JsonObject existing = merged.getOrDefault(serverId, new JsonObject());
+                JsonObject mergedServer = existing.deepCopy();
+                for (Map.Entry<String, JsonElement> entry : override.entrySet()) {
+                    if (!"deleted".equals(entry.getKey())) {
+                        mergedServer.add(entry.getKey(), entry.getValue().deepCopy());
+                    }
+                }
+                merged.put(serverId, mergedServer);
+            }
+        }
+
+        return new java.util.ArrayList<>(merged.values());
+    }
+
+    private void upsertProjectMcpServer(
+            String projectPath,
+            String projectKey,
+            JsonObject server,
+            List<JsonObject> globalServers
+    ) throws IOException {
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        JsonArray projectOverrides = getOrCreateProjectMcpArray(projectConfig, projectKey);
+        String serverId = server.get("id").getAsString();
+
+        boolean replaced = false;
+        for (int i = 0; i < projectOverrides.size(); i++) {
+            JsonObject existing = projectOverrides.get(i).getAsJsonObject();
+            if (existing.has("id") && serverId.equals(existing.get("id").getAsString())) {
+                projectOverrides.set(i, server.deepCopy());
+                replaced = true;
+                break;
+            }
+        }
+
+        if (!replaced) {
+            projectOverrides.add(server.deepCopy());
+        }
+
+        // 如果项目中覆盖了全局服务器，移除墓碑标记。
+        for (JsonObject globalServer : globalServers) {
+            if (globalServer.has("id") && serverId.equals(globalServer.get("id").getAsString())) {
+                JsonObject override = server.deepCopy();
+                override.remove("deleted");
+                replaceProjectMcpEntry(projectOverrides, serverId, override);
+                break;
+            }
+        }
+
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
+    }
+
+    private boolean deleteProjectMcpServer(
+            String projectPath,
+            String projectKey,
+            String serverId,
+            List<JsonObject> globalServers
+    ) throws IOException {
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        JsonArray projectOverrides = getOrCreateProjectMcpArray(projectConfig, projectKey);
+        boolean existsInGlobal = globalServers.stream()
+                .anyMatch(server -> server.has("id") && serverId.equals(server.get("id").getAsString()));
+
+        boolean removed = false;
+        for (int i = projectOverrides.size() - 1; i >= 0; i--) {
+            JsonObject existing = projectOverrides.get(i).getAsJsonObject();
+            if (existing.has("id") && serverId.equals(existing.get("id").getAsString())) {
+                projectOverrides.remove(i);
+                removed = true;
+            }
+        }
+
+        if (existsInGlobal) {
+            JsonObject tombstone = new JsonObject();
+            tombstone.addProperty("id", serverId);
+            tombstone.addProperty("deleted", true);
+            projectOverrides.add(tombstone);
+            removed = true;
+        }
+
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
+        return removed;
+    }
+
+    private void clearProjectMcpOverrides(String projectPath, String projectKey) throws IOException {
+        JsonObject projectConfig = ensureProjectConfigInitialized(projectPath);
+        projectConfig.remove(projectKey);
+        projectConfigManager.writeProjectConfig(projectPath, projectConfig);
+    }
+
+    private JsonArray getOrCreateProjectMcpArray(JsonObject projectConfig, String projectKey) {
+        if (!projectConfig.has(projectKey) || !projectConfig.get(projectKey).isJsonArray()) {
+            JsonArray overrides = new JsonArray();
+            projectConfig.add(projectKey, overrides);
+            return overrides;
+        }
+        return projectConfig.getAsJsonArray(projectKey);
+    }
+
+    private void replaceProjectMcpEntry(JsonArray projectOverrides, String serverId, JsonObject replacement) {
+        for (int i = 0; i < projectOverrides.size(); i++) {
+            JsonObject existing = projectOverrides.get(i).getAsJsonObject();
+            if (existing.has("id") && serverId.equals(existing.get("id").getAsString())) {
+                projectOverrides.set(i, replacement);
+                return;
+            }
+        }
+        projectOverrides.add(replacement);
+    }
+
+    private void syncProjectClaudeMcp(String projectPath) throws IOException {
+        mcpServerManager.replaceAllServers(getMcpServersWithProjectPath(projectPath), projectPath);
+    }
+
+    private void syncProjectCodexMcp(String projectPath) throws IOException {
+        codexMcpServerManager.replaceAllServers(getCodexMcpServers(projectPath));
+    }
+
+    private List<JsonObject> getGlobalClaudeMcpSource() throws IOException {
+        return getOrMigrateGlobalMcpSource("mcpServers", () -> mcpServerManager.getMcpServers());
+    }
+
+    private List<JsonObject> getGlobalCodexMcpSource() throws IOException {
+        return getOrMigrateGlobalMcpSource("codexMcpServers", () -> codexMcpServerManager.getMcpServers());
+    }
+
+    private List<JsonObject> getOrMigrateGlobalMcpSource(
+            String configKey,
+            IOListSupplier fallbackSupplier
+    ) throws IOException {
+        JsonObject config = readConfig();
+        if (config.has(configKey) && config.get(configKey).isJsonArray()) {
+            return jsonArrayToObjectList(config.getAsJsonArray(configKey));
+        }
+
+        List<JsonObject> fallback = fallbackSupplier.get();
+        if (!fallback.isEmpty()) {
+            writeGlobalMcpSource(configKey, fallback);
+        }
+        return fallback;
+    }
+
+    private void writeGlobalMcpSource(String configKey, List<JsonObject> servers) throws IOException {
+        JsonObject config = readConfig();
+        JsonArray array = new JsonArray();
+        for (JsonObject server : servers) {
+            array.add(server.deepCopy());
+        }
+        config.add(configKey, array);
+        writeConfig(config);
+    }
+
+    private void replaceGlobalMcpServer(String configKey, JsonObject server) throws IOException {
+        List<JsonObject> currentServers = "codexMcpServers".equals(configKey)
+                ? getGlobalCodexMcpSource()
+                : getGlobalClaudeMcpSource();
+
+        java.util.List<JsonObject> updatedServers = new java.util.ArrayList<>();
+        boolean replaced = false;
+        String targetId = server.get("id").getAsString();
+        for (JsonObject current : currentServers) {
+            if (current.has("id") && targetId.equals(current.get("id").getAsString())) {
+                updatedServers.add(server.deepCopy());
+                replaced = true;
+            } else {
+                updatedServers.add(current.deepCopy());
+            }
+        }
+
+        if (!replaced) {
+            updatedServers.add(server.deepCopy());
+        }
+
+        writeGlobalMcpSource(configKey, updatedServers);
+    }
+
+    private boolean deleteGlobalMcpServer(String configKey, String serverId) throws IOException {
+        List<JsonObject> currentServers = "codexMcpServers".equals(configKey)
+                ? getGlobalCodexMcpSource()
+                : getGlobalClaudeMcpSource();
+
+        java.util.List<JsonObject> updatedServers = new java.util.ArrayList<>();
+        boolean removed = false;
+        for (JsonObject current : currentServers) {
+            if (current.has("id") && serverId.equals(current.get("id").getAsString())) {
+                removed = true;
+            } else {
+                updatedServers.add(current.deepCopy());
+            }
+        }
+
+        if (removed) {
+            writeGlobalMcpSource(configKey, updatedServers);
+        }
+        return removed;
+    }
+
+    private List<JsonObject> jsonArrayToObjectList(JsonArray array) {
+        java.util.List<JsonObject> result = new java.util.ArrayList<>();
+        for (JsonElement element : array) {
+            if (element.isJsonObject()) {
+                result.add(element.getAsJsonObject().deepCopy());
+            }
+        }
+        return result;
+    }
+
+    @FunctionalInterface
+    private interface IOListSupplier {
+        List<JsonObject> get() throws IOException;
     }
 
     // ==================== Skills Management ====================
@@ -778,6 +1270,30 @@ public class CodemossSettingsService {
      */
     public Map<String, Object> batchImportPrompts(List<JsonObject> promptsToImport, ConflictStrategy strategy, PromptScope scope, Project project) throws IOException {
         return getPromptManager(scope, project).batchImportPrompts(promptsToImport, strategy);
+    }
+
+    /**
+     * 用全局 Prompt 配置覆盖项目 Prompt 配置。
+     *
+     * @param project 当前项目
+     * @throws IOException 读写失败
+     */
+    public void loadProjectPromptsFromGlobal(Project project) throws IOException {
+        AbstractPromptManager globalManager = getPromptManager(PromptScope.GLOBAL, null);
+        AbstractPromptManager projectManager = getPromptManager(PromptScope.PROJECT, project);
+        projectManager.writePromptConfig(globalManager.readPromptConfig().deepCopy());
+    }
+
+    /**
+     * 将项目 Prompt 配置写回全局 Prompt 配置。
+     *
+     * @param project 当前项目
+     * @throws IOException 读写失败
+     */
+    public void saveProjectPromptsToGlobal(Project project) throws IOException {
+        AbstractPromptManager globalManager = getPromptManager(PromptScope.GLOBAL, null);
+        AbstractPromptManager projectManager = getPromptManager(PromptScope.PROJECT, project);
+        globalManager.writePromptConfig(projectManager.readPromptConfig().deepCopy());
     }
 
     // ==================== Deprecated Backward-Compatible Methods ====================

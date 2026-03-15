@@ -46,7 +46,9 @@ public class PromptHandler extends BaseMessageHandler {
         "delete_prompt",
         "export_prompts",
         "import_prompts_file",
-        "save_imported_prompts"
+        "save_imported_prompts",
+        "load_project_prompts_from_global",
+        "save_project_prompts_to_global"
     };
 
     private final CodemossSettingsService settingsService;
@@ -121,6 +123,12 @@ public class PromptHandler extends BaseMessageHandler {
                 return true;
             case "save_imported_prompts":
                 handleSaveImportedPrompts(content);
+                return true;
+            case "load_project_prompts_from_global":
+                handleLoadProjectPromptsFromGlobal();
+                return true;
+            case "save_project_prompts_to_global":
+                handleSaveProjectPromptsToGlobal();
                 return true;
             default:
                 return false;
@@ -743,6 +751,42 @@ public class PromptHandler extends BaseMessageHandler {
         } catch (Exception e) {
             LOG.error("[PromptHandler] Failed to save imported prompts: " + e.getMessage(), e);
             sendImportErrorResult("Failed to save prompts: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 用全局 Prompt 覆盖当前项目 Prompt。
+     */
+    private void handleLoadProjectPromptsFromGlobal() {
+        try {
+            settingsService.loadProjectPromptsFromGlobal(context.getProject());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetPrompts("{\"scope\":\"project\"}");
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取 Prompt"));
+            });
+        } catch (Exception e) {
+            LOG.error("[PromptHandler] Failed to load project prompts from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取 Prompt 失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将项目 Prompt 写回全局 Prompt。
+     */
+    private void handleSaveProjectPromptsToGlobal() {
+        try {
+            settingsService.saveProjectPromptsToGlobal(context.getProject());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetPrompts("{\"scope\":\"global\"}");
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[PromptHandler] Failed to save project prompts to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存 Prompt 到全局配置失败: " + e.getMessage()));
+            });
         }
     }
 

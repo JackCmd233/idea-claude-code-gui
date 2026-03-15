@@ -28,7 +28,9 @@ public class McpServerHandler extends BaseMessageHandler {
         "update_mcp_server",
         "delete_mcp_server",
         "toggle_mcp_server",
-        "validate_mcp_server"
+        "validate_mcp_server",
+        "load_project_mcp_from_global",
+        "save_project_mcp_to_global"
     };
 
     public McpServerHandler(HandlerContext context) {
@@ -66,6 +68,12 @@ public class McpServerHandler extends BaseMessageHandler {
                 return true;
             case "validate_mcp_server":
                 handleValidateMcpServer(content);
+                return true;
+            case "load_project_mcp_from_global":
+                handleLoadProjectMcpFromGlobal();
+                return true;
+            case "save_project_mcp_to_global":
+                handleSaveProjectMcpToGlobal();
                 return true;
             default:
                 return false;
@@ -251,8 +259,9 @@ public class McpServerHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject server = gson.fromJson(content, JsonObject.class);
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            context.getSettingsService().upsertMcpServer(server);
+            context.getSettingsService().upsertMcpServer(server, projectPath);
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("window.mcpServerAdded", escapeJs(content));
@@ -274,8 +283,9 @@ public class McpServerHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject server = gson.fromJson(content, JsonObject.class);
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            context.getSettingsService().upsertMcpServer(server);
+            context.getSettingsService().upsertMcpServer(server, projectPath);
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("window.mcpServerUpdated", escapeJs(content));
@@ -298,8 +308,9 @@ public class McpServerHandler extends BaseMessageHandler {
             Gson gson = new Gson();
             JsonObject json = gson.fromJson(content, JsonObject.class);
             String serverId = json.get("id").getAsString();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            boolean success = context.getSettingsService().deleteMcpServer(serverId);
+            boolean success = context.getSettingsService().deleteMcpServer(serverId, projectPath);
 
             if (success) {
                 ApplicationManager.getApplication().invokeLater(() -> {
@@ -371,6 +382,40 @@ public class McpServerHandler extends BaseMessageHandler {
             });
         } catch (Exception e) {
             LOG.error("[McpServerHandler] Failed to validate MCP server: " + e.getMessage(), e);
+        }
+    }
+
+    private void handleLoadProjectMcpFromGlobal() {
+        try {
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+            context.getSettingsService().loadProjectMcpServersFromGlobal(projectPath);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetMcpServers();
+                handleGetMcpServerStatus();
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取 MCP"));
+            });
+        } catch (Exception e) {
+            LOG.error("[McpServerHandler] Failed to load project MCP from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取 MCP 失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    private void handleSaveProjectMcpToGlobal() {
+        try {
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+            context.getSettingsService().saveProjectMcpServersToGlobal(projectPath);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetMcpServers();
+                handleGetMcpServerStatus();
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[McpServerHandler] Failed to save project MCP to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存 MCP 到全局配置失败: " + e.getMessage()));
+            });
         }
     }
 }

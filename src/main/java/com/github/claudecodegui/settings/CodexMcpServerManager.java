@@ -354,6 +354,32 @@ public class CodexMcpServerManager {
         return result;
     }
 
+    /**
+     * 使用给定服务器列表完整替换 Codex MCP 配置。
+     *
+     * @param servers 有效 MCP 列表
+     * @throws IOException 写入失败
+     */
+    public void replaceAllServers(List<JsonObject> servers) throws IOException {
+        Map<String, Object> config = settingsManager.readConfigToml();
+        if (config == null) {
+            config = new LinkedHashMap<>();
+        }
+
+        Map<String, Object> mcpServers = new LinkedHashMap<>();
+        for (JsonObject server : servers) {
+            if (!server.has("id")) {
+                continue;
+            }
+            String serverId = server.get("id").getAsString();
+            mcpServers.put(serverId, buildServerConfigMap(server));
+        }
+
+        config.put("mcp_servers", mcpServers);
+        settingsManager.writeConfigToml(config);
+        LOG.info("[CodexMcpServerManager] Replaced all MCP servers, total: " + mcpServers.size());
+    }
+
     // ==================== Helper Methods ====================
 
     private JsonArray toJsonArray(Object obj) {

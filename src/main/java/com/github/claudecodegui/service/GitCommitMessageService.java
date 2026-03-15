@@ -272,7 +272,7 @@ Footer 包含：
      */
     private String getUserAdditionalPrompt() {
         try {
-            String userPrompt = settingsService.getCommitPrompt();
+            String userPrompt = settingsService.getCommitPrompt(project.getBasePath());
             // Return empty if the user hasn't configured a prompt or set the default value
             if (userPrompt == null || userPrompt.trim().isEmpty()) {
                 return "";

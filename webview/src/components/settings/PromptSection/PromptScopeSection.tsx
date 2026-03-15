@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PromptConfig, PromptScope } from '../../../types/prompt';
 import styles from './style.module.less';
@@ -22,6 +22,8 @@ interface PromptScopeSectionProps {
   onExport: () => void;
   /** Handler for import */
   onImport: () => void;
+  /** Extra actions rendered in the header */
+  extraActions?: ReactNode;
 }
 
 export default function PromptScopeSection({
@@ -35,6 +37,7 @@ export default function PromptScopeSection({
   onDelete,
   onExport,
   onImport,
+  extraActions,
 }: PromptScopeSectionProps) {
   const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -72,6 +75,7 @@ export default function PromptScopeSection({
       <div className={styles.sectionHeader}>
         <h4 className={styles.sectionTitle}>{title}</h4>
         <div className={styles.sectionActions}>
+          {extraActions}
           <button
             className={styles.exportButton}
             onClick={onExport}

@@ -28,7 +28,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
         "update_codex_mcp_server",
         "delete_codex_mcp_server",
         "toggle_codex_mcp_server",
-        "validate_codex_mcp_server"
+        "validate_codex_mcp_server",
+        "load_project_codex_mcp_from_global",
+        "save_project_codex_mcp_to_global"
     };
 
     private final CodexMcpServerManager codexMcpServerManager;
@@ -70,6 +72,12 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
             case "validate_codex_mcp_server":
                 handleValidateMcpServer(content);
                 return true;
+            case "load_project_codex_mcp_from_global":
+                handleLoadProjectCodexMcpFromGlobal();
+                return true;
+            case "save_project_codex_mcp_to_global":
+                handleSaveProjectCodexMcpToGlobal();
+                return true;
             default:
                 return false;
         }
@@ -82,7 +90,8 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
     private void handleGetMcpServers() {
         CompletableFuture.runAsync(() -> {
             try {
-                List<JsonObject> servers = codexMcpServerManager.getMcpServers();
+                String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+                List<JsonObject> servers = context.getSettingsService().getCodexMcpServers(projectPath);
                 Gson gson = new Gson();
                 String serversJson = gson.toJson(servers);
 
@@ -154,7 +163,8 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
             String serverId = json.get("serverId").getAsString();
 
             JsonObject targetServer = null;
-            List<JsonObject> servers = codexMcpServerManager.getMcpServers();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+            List<JsonObject> servers = context.getSettingsService().getCodexMcpServers(projectPath);
             for (JsonObject server : servers) {
                 if (server.has("id") && serverId.equals(server.get("id").getAsString())) {
                     targetServer = server;
@@ -207,8 +217,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject server = gson.fromJson(content, JsonObject.class);
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            codexMcpServerManager.upsertMcpServer(server);
+            context.getSettingsService().upsertCodexMcpServer(server, projectPath);
 
             String serverId = server.has("id") ? server.get("id").getAsString() : "unknown";
             LOG.info("[CodexMcpServerHandler] Added Codex MCP server: " + serverId);
@@ -233,8 +244,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject server = gson.fromJson(content, JsonObject.class);
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            codexMcpServerManager.upsertMcpServer(server);
+            context.getSettingsService().upsertCodexMcpServer(server, projectPath);
 
             String serverId = server.has("id") ? server.get("id").getAsString() : "unknown";
             LOG.info("[CodexMcpServerHandler] Updated Codex MCP server: " + serverId);
@@ -260,8 +272,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
             Gson gson = new Gson();
             JsonObject json = gson.fromJson(content, JsonObject.class);
             String serverId = json.get("id").getAsString();
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            boolean success = codexMcpServerManager.deleteMcpServer(serverId);
+            boolean success = context.getSettingsService().deleteCodexMcpServer(serverId, projectPath);
 
             if (success) {
                 LOG.info("[CodexMcpServerHandler] Deleted Codex MCP server: " + serverId);
@@ -292,8 +305,9 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
         try {
             Gson gson = new Gson();
             JsonObject server = gson.fromJson(content, JsonObject.class);
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
 
-            codexMcpServerManager.upsertMcpServer(server);
+            context.getSettingsService().upsertCodexMcpServer(server, projectPath);
 
             boolean isEnabled = !server.has("enabled") || server.get("enabled").getAsBoolean();
             String serverId = server.get("id").getAsString();
@@ -330,6 +344,40 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
             });
         } catch (Exception e) {
             LOG.error("[CodexMcpServerHandler] Failed to validate Codex MCP server: " + e.getMessage(), e);
+        }
+    }
+
+    private void handleLoadProjectCodexMcpFromGlobal() {
+        try {
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+            context.getSettingsService().loadProjectCodexMcpServersFromGlobal(projectPath);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetMcpServers();
+                handleGetMcpServerStatus();
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取 MCP"));
+            });
+        } catch (Exception e) {
+            LOG.error("[CodexMcpServerHandler] Failed to load project Codex MCP from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取 MCP 失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    private void handleSaveProjectCodexMcpToGlobal() {
+        try {
+            String projectPath = context.getProject() != null ? context.getProject().getBasePath() : null;
+            context.getSettingsService().saveProjectCodexMcpServersToGlobal(projectPath);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                handleGetMcpServers();
+                handleGetMcpServerStatus();
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[CodexMcpServerHandler] Failed to save project Codex MCP to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存 MCP 到全局配置失败: " + e.getMessage()));
+            });
         }
     }
 }

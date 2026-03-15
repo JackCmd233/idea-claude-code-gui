@@ -29,8 +29,10 @@ checkstyle {
     configFile = file('checkstyle.xml')
 }
 
-group = 'com.github.idea-claude-code-gui'
-version = '0.2.8'
+// 修改 plugin.xml
+// 原来的ID被屏蔽了，修改ID就可以通过安装包安装了
+group = 'com.github.JackCmd233.idea-claude-code-gui'
+version = '0.2.9.1'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

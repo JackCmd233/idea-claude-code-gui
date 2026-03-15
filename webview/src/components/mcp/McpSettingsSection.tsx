@@ -3,7 +3,7 @@
  * Supports both Claude and Codex modes
  */
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { McpServer, McpPreset } from '../../types/mcp';
 import { sendToJava } from '../../utils/bridge';
@@ -56,6 +56,7 @@ export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSe
   const [showLogDialog, setShowLogDialog] = useState(false);
   const [editingServer, setEditingServer] = useState<McpServer | null>(null);
   const [deletingServer, setDeletingServer] = useState<McpServer | null>(null);
+  const [syncingScopeAction, setSyncingScopeAction] = useState<'loadGlobal' | 'saveGlobal' | null>(null);
 
   // Toast state management
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -147,6 +148,26 @@ export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSe
     setServerTools,
     onLog: addLog,
   });
+
+  useEffect(() => {
+    const originalShowSuccess = window.showSuccess;
+    const originalShowError = window.showError;
+
+    window.showSuccess = (message: string) => {
+      setSyncingScopeAction(null);
+      originalShowSuccess?.(message);
+    };
+
+    window.showError = (message: string) => {
+      setSyncingScopeAction(null);
+      originalShowError?.(message);
+    };
+
+    return () => {
+      window.showSuccess = originalShowSuccess;
+      window.showError = originalShowError;
+    };
+  }, []);
 
   // Toggle server expand/collapse
   const toggleExpand = useCallback((serverId: string) => {
@@ -279,6 +300,16 @@ export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSe
     }
   }, [addToast, t]);
 
+  const handleLoadFromGlobal = useCallback(() => {
+    setSyncingScopeAction('loadGlobal');
+    sendToJava(isCodexMode ? 'load_project_codex_mcp_from_global' : 'load_project_mcp_from_global', {});
+  }, [isCodexMode]);
+
+  const handleSaveToGlobal = useCallback(() => {
+    setSyncingScopeAction('saveGlobal');
+    sendToJava(isCodexMode ? 'save_project_codex_mcp_to_global' : 'save_project_mcp_to_global', {});
+  }, [isCodexMode]);
+
   // Copy server config (redact sensitive values in env/headers)
   const handleCopyConfig = useCallback(async (server: McpServer) => {
     const { env, headers, ...safeFields } = server.server;
@@ -348,6 +379,22 @@ export function McpSettingsSection({ currentProvider = 'claude' }: McpSettingsSe
             title={t('mcp.refreshStatus')}
           >
             <span className={`codicon codicon-sync ${loading || statusLoading ? 'spinning' : ''}`}></span>
+          </button>
+          <button
+            className="refresh-btn"
+            onClick={handleLoadFromGlobal}
+            disabled={syncingScopeAction === 'loadGlobal'}
+            title="从全局配置读取"
+          >
+            <span className={`codicon codicon-cloud-download ${syncingScopeAction === 'loadGlobal' ? 'spinning' : ''}`}></span>
+          </button>
+          <button
+            className="refresh-btn"
+            onClick={handleSaveToGlobal}
+            disabled={syncingScopeAction === 'saveGlobal'}
+            title="保存到全局配置"
+          >
+            <span className={`codicon codicon-cloud-upload ${syncingScopeAction === 'saveGlobal' ? 'spinning' : ''}`}></span>
           </button>
           <div className="add-dropdown" ref={dropdownRef}>
             <button className="add-btn" onClick={() => setShowDropdown(!showDropdown)}>

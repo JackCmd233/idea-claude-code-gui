@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PromptScope } from '../../../types/prompt';
 import { usePromptManagement } from '../hooks/usePromptManagement';
@@ -18,6 +18,7 @@ export default function PromptSection({
   onSuccess,
 }: PromptSectionProps) {
   const { t } = useTranslation();
+  const [syncingPromptAction, setSyncingPromptAction] = useState<'loadGlobal' | 'saveGlobal' | null>(null);
 
   // Use prompt management hook
   const {
@@ -72,6 +73,8 @@ export default function PromptSection({
     const originalPromptOperationResult = window.promptOperationResult;
     const originalPromptImportPreviewResult = window.promptImportPreviewResult;
     const originalPromptImportResult = window.promptImportResult;
+    const originalShowSuccess = window.showSuccess;
+    const originalShowError = window.showError;
 
     // Chain our handlers with existing ones
     window.updateGlobalPrompts = (json: string) => {
@@ -158,6 +161,16 @@ export default function PromptSection({
       originalPromptImportResult?.(json);
     };
 
+    window.showSuccess = (message: string) => {
+      setSyncingPromptAction(null);
+      originalShowSuccess?.(message);
+    };
+
+    window.showError = (message: string) => {
+      setSyncingPromptAction(null);
+      originalShowError?.(message);
+    };
+
     return () => {
       // Restore original callbacks instead of deleting them
       // This ensures other components (like promptProvider) continue to receive updates
@@ -167,6 +180,8 @@ export default function PromptSection({
       window.promptOperationResult = originalPromptOperationResult;
       window.promptImportPreviewResult = originalPromptImportPreviewResult;
       window.promptImportResult = originalPromptImportResult;
+      window.showSuccess = originalShowSuccess;
+      window.showError = originalShowError;
     };
   }, [
     updateGlobalPrompts,
@@ -212,6 +227,36 @@ export default function PromptSection({
           onDelete={(prompt) => handleDeletePrompt(prompt, 'project')}
           onExport={() => handleExportPrompts('project')}
           onImport={() => handleImportPromptsFile('project')}
+          extraActions={(
+            <>
+              <button
+                className={styles.importButton}
+                onClick={() => {
+                  setSyncingPromptAction('loadGlobal');
+                  window.sendToJava?.('load_project_prompts_from_global:{}');
+                }}
+                disabled={syncingPromptAction === 'loadGlobal'}
+              >
+                {syncingPromptAction === 'loadGlobal' && (
+                  <span className="codicon codicon-loading codicon-modifier-spin" />
+                )}
+                从全局配置读取
+              </button>
+              <button
+                className={styles.exportButton}
+                onClick={() => {
+                  setSyncingPromptAction('saveGlobal');
+                  window.sendToJava?.('save_project_prompts_to_global:{}');
+                }}
+                disabled={syncingPromptAction === 'saveGlobal'}
+              >
+                {syncingPromptAction === 'saveGlobal' && (
+                  <span className="codicon codicon-loading codicon-modifier-spin" />
+                )}
+                保存到全局配置
+              </button>
+            </>
+          )}
         />
       ) : (
         <div className={styles.noProject}>

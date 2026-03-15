@@ -55,6 +55,18 @@ const sendToJava = (message: string) => {
 
 // Auto-collapse threshold (window width)
 const AUTO_COLLAPSE_THRESHOLD = 900;
+type PendingConfigAction =
+  | 'workingDirectory:loadGlobal'
+  | 'workingDirectory:saveGlobal'
+  | 'streaming:loadGlobal'
+  | 'streaming:saveGlobal'
+  | 'autoOpenFile:loadGlobal'
+  | 'autoOpenFile:saveGlobal'
+  | 'codexSandboxMode:loadGlobal'
+  | 'codexSandboxMode:saveGlobal'
+  | 'commitPrompt:loadGlobal'
+  | 'commitPrompt:saveGlobal'
+  | null;
 
 const SettingsView = ({
   onClose,
@@ -233,6 +245,8 @@ const SettingsView = ({
   // Working directory configuration
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [savingWorkingDirectory, setSavingWorkingDirectory] = useState(false);
+  const [projectConfigStatus, setProjectConfigStatus] = useState<{ available: boolean; initialized: boolean; projectPath?: string | null } | null>(null);
+  const [pendingConfigAction, setPendingConfigAction] = useState<PendingConfigAction>(null);
 
   // IDEA editor font configuration (read-only display)
   const [editorFontConfig, setEditorFontConfig] = useState<{
@@ -329,8 +343,11 @@ const SettingsView = ({
     setEditorFontConfig,
     setIdeTheme,
     setLocalStreamingEnabled,
+    setLocalAutoOpenFileEnabled,
     setCodexSandboxMode,
     setLocalSendShortcut,
+    setProjectConfigStatus,
+    clearPendingConfigAction: () => setPendingConfigAction(null),
     setLoading,
     setCodexLoading,
     setCodexConfigLoading,
@@ -479,6 +496,11 @@ const SettingsView = ({
     sendToJava(`set_working_directory:${JSON.stringify(payload)}`);
   };
 
+  const handleConfigSyncAction = (action: PendingConfigAction, message: string) => {
+    setPendingConfigAction(action);
+    sendToJava(message);
+  };
+
   // Streaming toggle change handler
   const handleStreamingEnabledChange = (enabled: boolean) => {
     // If prop callback is provided (from App.tsx), use it for centralized state management
@@ -573,6 +595,8 @@ const SettingsView = ({
     const payload = { prompt: commitPrompt };
     sendToJava(`set_commit_prompt:${JSON.stringify(payload)}`);
   };
+
+  const canUseProjectConfigActions = projectConfigStatus?.available !== false;
 
   // Save provider (wrapper function with validation logic)
   const handleSaveProviderFromDialog = (data: {
@@ -694,13 +718,26 @@ const SettingsView = ({
               onWorkingDirectoryChange={setWorkingDirectory}
               onSaveWorkingDirectory={handleSaveWorkingDirectory}
               savingWorkingDirectory={savingWorkingDirectory}
+              canUseProjectConfigActions={canUseProjectConfigActions}
+              onLoadWorkingDirectoryFromGlobal={() => handleConfigSyncAction('workingDirectory:loadGlobal', 'load_working_directory_from_global:')}
+              onSaveWorkingDirectoryToGlobal={() => handleConfigSyncAction('workingDirectory:saveGlobal', 'save_working_directory_to_global:')}
+              syncingWorkingDirectoryFromGlobal={pendingConfigAction === 'workingDirectory:loadGlobal'}
+              syncingWorkingDirectoryToGlobal={pendingConfigAction === 'workingDirectory:saveGlobal'}
               editorFontConfig={editorFontConfig}
               streamingEnabled={streamingEnabled}
               onStreamingEnabledChange={handleStreamingEnabledChange}
+              onLoadStreamingEnabledFromGlobal={() => handleConfigSyncAction('streaming:loadGlobal', 'load_streaming_enabled_from_global:')}
+              onSaveStreamingEnabledToGlobal={() => handleConfigSyncAction('streaming:saveGlobal', 'save_streaming_enabled_to_global:')}
+              syncingStreamingFromGlobal={pendingConfigAction === 'streaming:loadGlobal'}
+              syncingStreamingToGlobal={pendingConfigAction === 'streaming:saveGlobal'}
               sendShortcut={sendShortcut}
               onSendShortcutChange={handleSendShortcutChange}
               autoOpenFileEnabled={autoOpenFileEnabled}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
+              onLoadAutoOpenFileEnabledFromGlobal={() => handleConfigSyncAction('autoOpenFile:loadGlobal', 'load_auto_open_file_enabled_from_global:')}
+              onSaveAutoOpenFileEnabledToGlobal={() => handleConfigSyncAction('autoOpenFile:saveGlobal', 'save_auto_open_file_enabled_to_global:')}
+              syncingAutoOpenFileFromGlobal={pendingConfigAction === 'autoOpenFile:loadGlobal'}
+              syncingAutoOpenFileToGlobal={pendingConfigAction === 'autoOpenFile:saveGlobal'}
               chatBgColor={chatBgColor}
               onChatBgColorChange={setChatBgColor}
               userMsgColor={userMsgColor}
@@ -764,6 +801,11 @@ const SettingsView = ({
               <PermissionsSection
                 codexSandboxMode={codexSandboxMode}
                 onCodexSandboxModeChange={handleCodexSandboxModeChange}
+                onLoadCodexSandboxModeFromGlobal={() => handleConfigSyncAction('codexSandboxMode:loadGlobal', 'load_codex_sandbox_mode_from_global:')}
+                onSaveCodexSandboxModeToGlobal={() => handleConfigSyncAction('codexSandboxMode:saveGlobal', 'save_codex_sandbox_mode_to_global:')}
+                syncingCodexSandboxModeFromGlobal={pendingConfigAction === 'codexSandboxMode:loadGlobal'}
+                syncingCodexSandboxModeToGlobal={pendingConfigAction === 'codexSandboxMode:saveGlobal'}
+                canUseProjectConfigActions={canUseProjectConfigActions}
               />
             ) : (
               <PlaceholderSection type="permissions" />
@@ -777,6 +819,11 @@ const SettingsView = ({
               onCommitPromptChange={setCommitPrompt}
               onSaveCommitPrompt={handleSaveCommitPrompt}
               savingCommitPrompt={savingCommitPrompt}
+              canUseProjectConfigActions={canUseProjectConfigActions}
+              onLoadCommitPromptFromGlobal={() => handleConfigSyncAction('commitPrompt:loadGlobal', 'load_commit_prompt_from_global:')}
+              onSaveCommitPromptToGlobal={() => handleConfigSyncAction('commitPrompt:saveGlobal', 'save_commit_prompt_to_global:')}
+              syncingCommitPromptFromGlobal={pendingConfigAction === 'commitPrompt:loadGlobal'}
+              syncingCommitPromptToGlobal={pendingConfigAction === 'commitPrompt:saveGlobal'}
             />
           </div>
 

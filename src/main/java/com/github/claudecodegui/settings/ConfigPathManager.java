@@ -70,6 +70,37 @@ public class ConfigPathManager {
     }
 
     /**
+     * 获取项目级配置目录路径。
+     *
+     * @param projectPath 项目根目录
+     * @return <project>/.codemoss
+     */
+    public Path getProjectConfigDir(String projectPath) {
+        validateProjectPath(projectPath);
+        return Paths.get(projectPath, CONFIG_DIR_NAME);
+    }
+
+    /**
+     * 获取项目级配置文件路径。
+     *
+     * @param projectPath 项目根目录
+     * @return <project>/.codemoss/config.json
+     */
+    public Path getProjectConfigFilePath(String projectPath) {
+        return getProjectConfigDir(projectPath).resolve(CONFIG_FILE_NAME);
+    }
+
+    /**
+     * 获取项目级 prompt 文件路径。
+     *
+     * @param projectPath 项目根目录
+     * @return <project>/.codemoss/prompt.json
+     */
+    public Path getProjectPromptFilePath(String projectPath) {
+        return getProjectConfigDir(projectPath).resolve(PROMPT_FILE_NAME);
+    }
+
+    /**
      * Get the Claude settings.json path.
      */
     public Path getClaudeSettingsPath() {
@@ -102,6 +133,31 @@ public class ConfigPathManager {
         if (!Files.exists(configDir)) {
             Files.createDirectories(configDir);
             LOG.info("[ConfigPathManager] Created config directory: " + configDir);
+        }
+    }
+
+    /**
+     * 确保项目级配置目录存在。
+     *
+     * @param projectPath 项目根目录
+     * @throws IOException 目录创建失败时抛出
+     */
+    public void ensureProjectConfigDirectory(String projectPath) throws IOException {
+        Path projectConfigDir = getProjectConfigDir(projectPath);
+        if (!Files.exists(projectConfigDir)) {
+            Files.createDirectories(projectConfigDir);
+            LOG.info("[ConfigPathManager] Created project config directory: " + projectConfigDir);
+        }
+    }
+
+    /**
+     * 校验项目路径是否合法。
+     *
+     * @param projectPath 项目根目录
+     */
+    private void validateProjectPath(String projectPath) {
+        if (projectPath == null || projectPath.trim().isEmpty()) {
+            throw new IllegalArgumentException("Project path must not be empty");
         }
     }
 }

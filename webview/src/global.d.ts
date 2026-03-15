@@ -231,6 +231,11 @@ interface Window {
   updateAutoOpenFileEnabled?: (json: string) => void;
 
   /**
+   * Update project config initialization status
+   */
+  updateProjectConfigStatus?: (json: string) => void;
+
+  /**
    * Update commit AI prompt configuration
    */
   updateCommitPrompt?: (json: string) => void;

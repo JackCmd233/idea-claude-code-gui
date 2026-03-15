@@ -77,8 +77,17 @@ export interface BehaviorTabProps {
   onSendShortcutChange?: (shortcut: 'enter' | 'cmdEnter') => void;
   streamingEnabled?: boolean;
   onStreamingEnabledChange?: (enabled: boolean) => void;
+  canUseProjectConfigActions?: boolean;
+  onLoadStreamingEnabledFromGlobal?: () => void;
+  onSaveStreamingEnabledToGlobal?: () => void;
+  syncingStreamingFromGlobal?: boolean;
+  syncingStreamingToGlobal?: boolean;
   autoOpenFileEnabled?: boolean;
   onAutoOpenFileEnabledChange?: (enabled: boolean) => void;
+  onLoadAutoOpenFileEnabledFromGlobal?: () => void;
+  onSaveAutoOpenFileEnabledToGlobal?: () => void;
+  syncingAutoOpenFileFromGlobal?: boolean;
+  syncingAutoOpenFileToGlobal?: boolean;
   diffExpandedByDefault?: boolean;
   onDiffExpandedByDefaultChange?: (enabled: boolean) => void;
   soundNotificationEnabled?: boolean;
@@ -99,8 +108,17 @@ const BehaviorTab = ({
   onSendShortcutChange = () => {},
   streamingEnabled = true,
   onStreamingEnabledChange = () => {},
+  canUseProjectConfigActions = true,
+  onLoadStreamingEnabledFromGlobal = () => {},
+  onSaveStreamingEnabledToGlobal = () => {},
+  syncingStreamingFromGlobal = false,
+  syncingStreamingToGlobal = false,
   autoOpenFileEnabled = true,
   onAutoOpenFileEnabledChange = () => {},
+  onLoadAutoOpenFileEnabledFromGlobal = () => {},
+  onSaveAutoOpenFileEnabledToGlobal = () => {},
+  syncingAutoOpenFileFromGlobal = false,
+  syncingAutoOpenFileToGlobal = false,
   diffExpandedByDefault = false,
   onDiffExpandedByDefaultChange = () => {},
   soundNotificationEnabled = false,
@@ -187,6 +205,18 @@ const BehaviorTab = ({
           <span className="codicon codicon-info" />
           <span>{t('settings.basic.streaming.hint')}</span>
         </small>
+        {canUseProjectConfigActions && (
+          <div className={styles.nodePathInputWrapper}>
+            <button className={styles.saveBtn} onClick={onLoadStreamingEnabledFromGlobal} disabled={syncingStreamingFromGlobal}>
+              {syncingStreamingFromGlobal && <span className="codicon codicon-loading codicon-modifier-spin" />}
+              从全局配置读取
+            </button>
+            <button className={styles.saveBtn} onClick={onSaveStreamingEnabledToGlobal} disabled={syncingStreamingToGlobal}>
+              {syncingStreamingToGlobal && <span className="codicon codicon-loading codicon-modifier-spin" />}
+              保存到全局配置
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Auto open file configuration */}
@@ -213,6 +243,18 @@ const BehaviorTab = ({
           <span className="codicon codicon-info" />
           <span>{t('settings.basic.autoOpenFile.hint')}</span>
         </small>
+        {canUseProjectConfigActions && (
+          <div className={styles.nodePathInputWrapper}>
+            <button className={styles.saveBtn} onClick={onLoadAutoOpenFileEnabledFromGlobal} disabled={syncingAutoOpenFileFromGlobal}>
+              {syncingAutoOpenFileFromGlobal && <span className="codicon codicon-loading codicon-modifier-spin" />}
+              从全局配置读取
+            </button>
+            <button className={styles.saveBtn} onClick={onSaveAutoOpenFileEnabledToGlobal} disabled={syncingAutoOpenFileToGlobal}>
+              {syncingAutoOpenFileToGlobal && <span className="codicon codicon-loading codicon-modifier-spin" />}
+              保存到全局配置
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Diff expanded by default configuration */}

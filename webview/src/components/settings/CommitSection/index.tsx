@@ -6,6 +6,11 @@ interface CommitSectionProps {
   onCommitPromptChange: (prompt: string) => void;
   onSaveCommitPrompt: () => void;
   savingCommitPrompt: boolean;
+  canUseProjectConfigActions?: boolean;
+  onLoadCommitPromptFromGlobal?: () => void;
+  onSaveCommitPromptToGlobal?: () => void;
+  syncingCommitPromptFromGlobal?: boolean;
+  syncingCommitPromptToGlobal?: boolean;
 }
 
 const CommitSection = ({
@@ -13,6 +18,11 @@ const CommitSection = ({
   onCommitPromptChange,
   onSaveCommitPrompt,
   savingCommitPrompt,
+  canUseProjectConfigActions = true,
+  onLoadCommitPromptFromGlobal = () => {},
+  onSaveCommitPromptToGlobal = () => {},
+  syncingCommitPromptFromGlobal = false,
+  syncingCommitPromptToGlobal = false,
 }: CommitSectionProps) => {
   const { t } = useTranslation();
 
@@ -50,6 +60,30 @@ const CommitSection = ({
           <span className="codicon codicon-info" />
           <span>{t('settings.commit.prompt.hint')}</span>
         </small>
+        {canUseProjectConfigActions && (
+          <div className={styles.promptInputWrapper}>
+            <button
+              className={styles.saveBtn}
+              onClick={onLoadCommitPromptFromGlobal}
+              disabled={syncingCommitPromptFromGlobal}
+            >
+              {syncingCommitPromptFromGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              从全局配置读取
+            </button>
+            <button
+              className={styles.saveBtn}
+              onClick={onSaveCommitPromptToGlobal}
+              disabled={syncingCommitPromptToGlobal}
+            >
+              {syncingCommitPromptToGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              保存到全局配置
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Code Review AI preview */}

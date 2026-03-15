@@ -29,8 +29,11 @@ export interface SettingsWindowCallbacksDeps {
   setEditorFontConfig: (config: { fontFamily: string; fontSize: number; lineSpacing: number } | undefined) => void;
   setIdeTheme: (theme: 'light' | 'dark' | null) => void;
   setLocalStreamingEnabled: (enabled: boolean) => void;
+  setLocalAutoOpenFileEnabled: (enabled: boolean) => void;
   setCodexSandboxMode?: (mode: 'workspace-write' | 'danger-full-access') => void;
   setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
+  setProjectConfigStatus: (status: { available: boolean; initialized: boolean; projectPath?: string | null } | null) => void;
+  clearPendingConfigAction: () => void;
   setLoading: (loading: boolean) => void;
   setCodexLoading: (loading: boolean) => void;
   setCodexConfigLoading: (loading: boolean) => void;
@@ -126,6 +129,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       d().setSavingNodePath(false);
       d().setSavingWorkingDirectory(false);
       d().setSavingCommitPrompt(false);
+      d().clearPendingConfigAction();
     };
 
     window.showSwitchSuccess = (message: string) => {
@@ -153,9 +157,11 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         const data = JSON.parse(jsonStr);
         d().setWorkingDirectory(data.customWorkingDir || '');
         d().setSavingWorkingDirectory(false);
+        d().clearPendingConfigAction();
       } catch (error) {
         console.error('[SettingsView] Failed to parse working directory:', error);
         d().setSavingWorkingDirectory(false);
+        d().clearPendingConfigAction();
       }
     };
 
@@ -163,6 +169,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       d().showAlert('success', t('toast.operationSuccess'), message);
       d().setSavingNodePath(false);
       d().setSavingWorkingDirectory(false);
+      d().clearPendingConfigAction();
     };
 
     window.showSuccessI18n = (i18nKey: string) => {
@@ -199,8 +206,10 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         try {
           const data = JSON.parse(jsonStr);
           d().setLocalStreamingEnabled(data.streamingEnabled ?? true);
+          d().clearPendingConfigAction();
         } catch (error) {
           console.error('[SettingsView] Failed to parse streaming config:', error);
+          d().clearPendingConfigAction();
         }
       };
     }
@@ -213,8 +222,32 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         if (mode === 'workspace-write' || mode === 'danger-full-access') {
           d().setCodexSandboxMode?.(mode);
         }
+        d().clearPendingConfigAction();
       } catch (error) {
         console.error('[SettingsView] Failed to parse Codex sandbox mode config:', error);
+        d().clearPendingConfigAction();
+      }
+    };
+
+    const previousUpdateAutoOpenFileEnabled = window.updateAutoOpenFileEnabled;
+    window.updateAutoOpenFileEnabled = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        d().setLocalAutoOpenFileEnabled(data.autoOpenFileEnabled ?? true);
+        d().clearPendingConfigAction();
+        previousUpdateAutoOpenFileEnabled?.(jsonStr);
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse auto open file config:', error);
+        d().clearPendingConfigAction();
+      }
+    };
+
+    window.updateProjectConfigStatus = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        d().setProjectConfigStatus(data);
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse project config status:', error);
       }
     };
 
@@ -237,12 +270,14 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         const data = JSON.parse(jsonStr);
         d().setCommitPrompt(data.commitPrompt || '');
         d().setSavingCommitPrompt(false);
+        d().clearPendingConfigAction();
         if (data.saved) {
           d().addToast(t('toast.saveSuccess'), 'success');
         }
       } catch (error) {
         console.error('[SettingsView] Failed to parse commit prompt:', error);
         d().setSavingCommitPrompt(false);
+        d().clearPendingConfigAction();
         d().addToast(t('toast.saveFailed'), 'error');
       }
     };
@@ -396,9 +431,11 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     sendToJava('get_current_claude_config:');
     sendToJava('get_node_path:');
     sendToJava('get_working_directory:');
+    sendToJava('get_project_config_status:');
     sendToJava('get_editor_font_config:');
     sendToJava('get_streaming_enabled:');
     sendToJava('get_codex_sandbox_mode:');
+    sendToJava('get_auto_open_file_enabled:');
     sendToJava('get_commit_prompt:');
     sendToJava('get_sound_notification_config:');
 
@@ -421,6 +458,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         window.updateStreamingEnabled = previousUpdateStreamingEnabled;
       }
       window.updateCodexSandboxMode = undefined;
+      window.updateAutoOpenFileEnabled = previousUpdateAutoOpenFileEnabled;
+      window.updateProjectConfigStatus = undefined;
       if (!d().onSendShortcutChangeProp) {
         window.updateSendShortcut = previousUpdateSendShortcut;
       }

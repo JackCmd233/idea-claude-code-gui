@@ -494,4 +494,87 @@ public class McpServerManager {
         result.put("errors", errors);
         return result;
     }
+
+    /**
+     * 使用给定服务器列表完整替换 Claude 全局 MCP 配置。
+     *
+     * @param servers 有效 MCP 列表
+     * @param projectPath 当前项目路径，用于清理旧的项目级遗留配置
+     * @throws IOException 写入失败
+     */
+    public void replaceAllServers(List<JsonObject> servers, String projectPath) throws IOException {
+        JsonObject claudeJson = readOrCreateClaudeJson();
+
+        JsonObject mcpServers = new JsonObject();
+        JsonArray disabledServers = new JsonArray();
+        for (JsonObject server : servers) {
+            if (!server.has("id")) {
+                continue;
+            }
+
+            String serverId = server.get("id").getAsString();
+            JsonObject serverSpec = server.has("server") && server.get("server").isJsonObject()
+                    ? server.getAsJsonObject("server").deepCopy()
+                    : new JsonObject();
+            mcpServers.add(serverId, serverSpec);
+
+            boolean enabled = !server.has("enabled") || server.get("enabled").getAsBoolean();
+            if (!enabled) {
+                disabledServers.add(serverId);
+            }
+        }
+
+        claudeJson.add("mcpServers", mcpServers);
+        claudeJson.add("disabledMcpServers", disabledServers);
+
+        // 清理当前项目遗留的 MCP 覆盖，避免继续参与 Claude CLI 的合并逻辑。
+        if (projectPath != null
+                && claudeJson.has("projects")
+                && claudeJson.get("projects").isJsonObject()) {
+            JsonObject projects = claudeJson.getAsJsonObject("projects");
+            if (projects.has(projectPath) && projects.get(projectPath).isJsonObject()) {
+                JsonObject projectConfig = projects.getAsJsonObject(projectPath);
+                projectConfig.remove("mcpServers");
+                projectConfig.remove("disabledMcpServers");
+                if (projectConfig.entrySet().isEmpty()) {
+                    projects.remove(projectPath);
+                }
+            }
+        }
+
+        writeClaudeJson(claudeJson);
+        try {
+            claudeSettingsManager.syncMcpToClaudeSettings();
+        } catch (Exception syncError) {
+            LOG.warn("[McpServerManager] Failed to sync MCP to settings.json: " + syncError.getMessage());
+        }
+    }
+
+    private JsonObject readOrCreateClaudeJson() {
+        try {
+            String homeDir = PlatformUtils.getHomeDirectory();
+            Path claudeJsonPath = Paths.get(homeDir, ".claude.json");
+            File claudeJsonFile = claudeJsonPath.toFile();
+            if (claudeJsonFile.exists()) {
+                try (FileReader reader = new FileReader(claudeJsonFile, StandardCharsets.UTF_8)) {
+                    JsonElement parsed = JsonParser.parseReader(reader);
+                    if (parsed != null && parsed.isJsonObject()) {
+                        return parsed.getAsJsonObject();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[McpServerManager] Failed to read ~/.claude.json: " + e.getMessage());
+        }
+        return new JsonObject();
+    }
+
+    private void writeClaudeJson(JsonObject claudeJson) throws IOException {
+        String homeDir = PlatformUtils.getHomeDirectory();
+        Path claudeJsonPath = Paths.get(homeDir, ".claude.json");
+        try (FileWriter writer = new FileWriter(claudeJsonPath.toFile(), StandardCharsets.UTF_8)) {
+            gson.toJson(claudeJson, writer);
+            writer.flush();
+        }
+    }
 }

@@ -4,11 +4,21 @@ import styles from './style.module.less';
 interface PermissionsSectionProps {
   codexSandboxMode: 'workspace-write' | 'danger-full-access';
   onCodexSandboxModeChange: (mode: 'workspace-write' | 'danger-full-access') => void;
+  canUseProjectConfigActions?: boolean;
+  onLoadCodexSandboxModeFromGlobal?: () => void;
+  onSaveCodexSandboxModeToGlobal?: () => void;
+  syncingCodexSandboxModeFromGlobal?: boolean;
+  syncingCodexSandboxModeToGlobal?: boolean;
 }
 
 const PermissionsSection = ({
   codexSandboxMode,
   onCodexSandboxModeChange,
+  canUseProjectConfigActions = true,
+  onLoadCodexSandboxModeFromGlobal = () => {},
+  onSaveCodexSandboxModeToGlobal = () => {},
+  syncingCodexSandboxModeFromGlobal = false,
+  syncingCodexSandboxModeToGlobal = false,
 }: PermissionsSectionProps) => {
   const { t } = useTranslation();
 
@@ -58,6 +68,30 @@ const PermissionsSection = ({
           <span className="codicon codicon-info" />
           <span>{t('settings.permissionsPanel.hint')}</span>
         </small>
+        {canUseProjectConfigActions && (
+          <div className={styles.options}>
+            <button
+              className={styles.option}
+              onClick={onLoadCodexSandboxModeFromGlobal}
+              disabled={syncingCodexSandboxModeFromGlobal}
+            >
+              {syncingCodexSandboxModeFromGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              <span>从全局配置读取</span>
+            </button>
+            <button
+              className={styles.option}
+              onClick={onSaveCodexSandboxModeToGlobal}
+              disabled={syncingCodexSandboxModeToGlobal}
+            >
+              {syncingCodexSandboxModeToGlobal && (
+                <span className="codicon codicon-loading codicon-modifier-spin" />
+              )}
+              <span>保存到全局配置</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

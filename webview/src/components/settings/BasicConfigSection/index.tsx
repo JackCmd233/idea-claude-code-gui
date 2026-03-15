@@ -28,6 +28,11 @@ interface BasicConfigSectionProps {
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
+  canUseProjectConfigActions?: boolean;
+  onLoadWorkingDirectoryFromGlobal?: () => void;
+  onSaveWorkingDirectoryToGlobal?: () => void;
+  syncingWorkingDirectoryFromGlobal?: boolean;
+  syncingWorkingDirectoryToGlobal?: boolean;
   editorFontConfig?: {
     fontFamily: string;
     fontSize: number;
@@ -36,9 +41,17 @@ interface BasicConfigSectionProps {
   // Streaming configuration
   streamingEnabled?: boolean;
   onStreamingEnabledChange?: (enabled: boolean) => void;
+  onLoadStreamingEnabledFromGlobal?: () => void;
+  onSaveStreamingEnabledToGlobal?: () => void;
+  syncingStreamingFromGlobal?: boolean;
+  syncingStreamingToGlobal?: boolean;
   // Auto open file configuration
   autoOpenFileEnabled?: boolean;
   onAutoOpenFileEnabledChange?: (enabled: boolean) => void;
+  onLoadAutoOpenFileEnabledFromGlobal?: () => void;
+  onSaveAutoOpenFileEnabledToGlobal?: () => void;
+  syncingAutoOpenFileFromGlobal?: boolean;
+  syncingAutoOpenFileToGlobal?: boolean;
   // Send shortcut configuration
   sendShortcut?: 'enter' | 'cmdEnter';
   onSendShortcutChange?: (shortcut: 'enter' | 'cmdEnter') => void;
@@ -109,8 +122,17 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onSendShortcutChange={props.onSendShortcutChange}
           streamingEnabled={props.streamingEnabled}
           onStreamingEnabledChange={props.onStreamingEnabledChange}
+          canUseProjectConfigActions={props.canUseProjectConfigActions}
+          onLoadStreamingEnabledFromGlobal={props.onLoadStreamingEnabledFromGlobal}
+          onSaveStreamingEnabledToGlobal={props.onSaveStreamingEnabledToGlobal}
+          syncingStreamingFromGlobal={props.syncingStreamingFromGlobal}
+          syncingStreamingToGlobal={props.syncingStreamingToGlobal}
           autoOpenFileEnabled={props.autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={props.onAutoOpenFileEnabledChange}
+          onLoadAutoOpenFileEnabledFromGlobal={props.onLoadAutoOpenFileEnabledFromGlobal}
+          onSaveAutoOpenFileEnabledToGlobal={props.onSaveAutoOpenFileEnabledToGlobal}
+          syncingAutoOpenFileFromGlobal={props.syncingAutoOpenFileFromGlobal}
+          syncingAutoOpenFileToGlobal={props.syncingAutoOpenFileToGlobal}
           diffExpandedByDefault={props.diffExpandedByDefault}
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
           soundNotificationEnabled={props.soundNotificationEnabled}
@@ -139,6 +161,11 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onWorkingDirectoryChange={props.onWorkingDirectoryChange}
           onSaveWorkingDirectory={props.onSaveWorkingDirectory}
           savingWorkingDirectory={props.savingWorkingDirectory}
+          canUseProjectConfigActions={props.canUseProjectConfigActions}
+          onLoadWorkingDirectoryFromGlobal={props.onLoadWorkingDirectoryFromGlobal}
+          onSaveWorkingDirectoryToGlobal={props.onSaveWorkingDirectoryToGlobal}
+          syncingWorkingDirectoryFromGlobal={props.syncingWorkingDirectoryFromGlobal}
+          syncingWorkingDirectoryToGlobal={props.syncingWorkingDirectoryToGlobal}
         />
       )}
     </div>

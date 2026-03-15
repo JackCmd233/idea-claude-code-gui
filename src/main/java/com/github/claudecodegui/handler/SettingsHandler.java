@@ -62,20 +62,32 @@ public class SettingsHandler extends BaseMessageHandler {
         "get_node_path",
         "set_node_path",
         "get_usage_statistics",
+        "get_project_config_status",
+        "initialize_project_config",
         "get_working_directory",
         "set_working_directory",
+        "load_working_directory_from_global",
+        "save_working_directory_to_global",
         "get_editor_font_config",
         "get_streaming_enabled",
         "set_streaming_enabled",
+        "load_streaming_enabled_from_global",
+        "save_streaming_enabled_to_global",
         "get_codex_sandbox_mode",
         "set_codex_sandbox_mode",
+        "load_codex_sandbox_mode_from_global",
+        "save_codex_sandbox_mode_to_global",
         "get_send_shortcut",
         "set_send_shortcut",
         "get_auto_open_file_enabled",
         "set_auto_open_file_enabled",
+        "load_auto_open_file_enabled_from_global",
+        "save_auto_open_file_enabled_to_global",
         "get_ide_theme",
         "get_commit_prompt",
         "set_commit_prompt",
+        "load_commit_prompt_from_global",
+        "save_commit_prompt_to_global",
         "get_input_history",
         "record_input_history",
         "delete_input_history_item",
@@ -166,11 +178,23 @@ public class SettingsHandler extends BaseMessageHandler {
             case "get_usage_statistics":
                 handleGetUsageStatistics(content);
                 return true;
+            case "get_project_config_status":
+                handleGetProjectConfigStatus();
+                return true;
+            case "initialize_project_config":
+                handleInitializeProjectConfig();
+                return true;
             case "get_working_directory":
                 handleGetWorkingDirectory();
                 return true;
             case "set_working_directory":
                 handleSetWorkingDirectory(content);
+                return true;
+            case "load_working_directory_from_global":
+                handleLoadWorkingDirectoryFromGlobal();
+                return true;
+            case "save_working_directory_to_global":
+                handleSaveWorkingDirectoryToGlobal();
                 return true;
             case "get_editor_font_config":
                 handleGetEditorFontConfig();
@@ -181,11 +205,23 @@ public class SettingsHandler extends BaseMessageHandler {
             case "set_streaming_enabled":
                 handleSetStreamingEnabled(content);
                 return true;
+            case "load_streaming_enabled_from_global":
+                handleLoadStreamingEnabledFromGlobal();
+                return true;
+            case "save_streaming_enabled_to_global":
+                handleSaveStreamingEnabledToGlobal();
+                return true;
             case "get_codex_sandbox_mode":
                 handleGetCodexSandboxMode();
                 return true;
             case "set_codex_sandbox_mode":
                 handleSetCodexSandboxMode(content);
+                return true;
+            case "load_codex_sandbox_mode_from_global":
+                handleLoadCodexSandboxModeFromGlobal();
+                return true;
+            case "save_codex_sandbox_mode_to_global":
+                handleSaveCodexSandboxModeToGlobal();
                 return true;
             case "get_send_shortcut":
                 handleGetSendShortcut();
@@ -199,6 +235,12 @@ public class SettingsHandler extends BaseMessageHandler {
             case "set_auto_open_file_enabled":
                 handleSetAutoOpenFileEnabled(content);
                 return true;
+            case "load_auto_open_file_enabled_from_global":
+                handleLoadAutoOpenFileEnabledFromGlobal();
+                return true;
+            case "save_auto_open_file_enabled_to_global":
+                handleSaveAutoOpenFileEnabledToGlobal();
+                return true;
             case "get_ide_theme":
                 handleGetIdeTheme();
                 return true;
@@ -207,6 +249,12 @@ public class SettingsHandler extends BaseMessageHandler {
                 return true;
             case "set_commit_prompt":
                 handleSetCommitPrompt(content);
+                return true;
+            case "load_commit_prompt_from_global":
+                handleLoadCommitPromptFromGlobal();
+                return true;
+            case "save_commit_prompt_to_global":
+                handleSaveCommitPromptToGlobal();
                 return true;
             case "get_input_history":
                 handleGetInputHistory();
@@ -532,6 +580,65 @@ public class SettingsHandler extends BaseMessageHandler {
 
     private String getCurrentEditorFilePath() {
         return EditorFileUtils.getCurrentEditorFilePath(this.context.getProject());
+    }
+
+    /**
+     * 获取当前项目路径。
+     */
+    private String getCurrentProjectPath() {
+        Project project = context.getProject();
+        return project != null ? project.getBasePath() : null;
+    }
+
+    /**
+     * 推送项目配置初始化状态到前端。
+     */
+    private void sendProjectConfigStatus(String projectPath, boolean initialized) {
+        JsonObject response = new JsonObject();
+        response.addProperty("available", projectPath != null && !projectPath.trim().isEmpty());
+        response.addProperty("initialized", initialized);
+        response.addProperty("projectPath", projectPath);
+
+        ApplicationManager.getApplication().invokeLater(() -> {
+            callJavaScript("window.updateProjectConfigStatus", escapeJs(gson.toJson(response)));
+        });
+    }
+
+    /**
+     * 获取项目配置初始化状态。
+     */
+    private void handleGetProjectConfigStatus() {
+        try {
+            String projectPath = getCurrentProjectPath();
+            boolean initialized = projectPath != null && settingsService.isProjectConfigInitialized(projectPath);
+            sendProjectConfigStatus(projectPath, initialized);
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to get project config status: " + e.getMessage(), e);
+            sendProjectConfigStatus(getCurrentProjectPath(), false);
+        }
+    }
+
+    /**
+     * 显式初始化项目配置。
+     */
+    private void handleInitializeProjectConfig() {
+        try {
+            String projectPath = getCurrentProjectPath();
+            if (projectPath == null || projectPath.trim().isEmpty()) {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    callJavaScript("window.showError", escapeJs("无法获取项目路径"));
+                });
+                return;
+            }
+
+            settingsService.ensureProjectConfigInitialized(projectPath);
+            sendProjectConfigStatus(projectPath, true);
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to initialize project config: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("初始化项目配置失败: " + e.getMessage()));
+            });
+        }
     }
 
     private void refreshContextBar() {
@@ -1367,8 +1474,7 @@ public class SettingsHandler extends BaseMessageHandler {
      */
     private void handleGetCommitPrompt() {
         try {
-            CodemossSettingsService settingsService = new CodemossSettingsService();
-            String commitPrompt = settingsService.getCommitPrompt();
+            String commitPrompt = settingsService.getCommitPrompt(getCurrentProjectPath());
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 JsonObject response = new JsonObject();
@@ -1417,8 +1523,7 @@ public class SettingsHandler extends BaseMessageHandler {
             }
 
             final String validatedPrompt = prompt;
-            CodemossSettingsService settingsService = new CodemossSettingsService();
-            settingsService.setCommitPrompt(validatedPrompt);
+            settingsService.setCommitPrompt(getCurrentProjectPath(), validatedPrompt);
 
             LOG.info("[SettingsHandler] Set commit prompt, length: " + validatedPrompt.length());
 
@@ -1959,5 +2064,190 @@ public class SettingsHandler extends BaseMessageHandler {
                 LOG.error("[SettingsHandler] Failed to open file chooser: " + e.getMessage(), e);
             }
         });
+    }
+
+    /**
+     * 从全局配置加载工作目录到当前项目。
+     */
+    private void handleLoadWorkingDirectoryFromGlobal() {
+        try {
+            String customWorkingDir = settingsService.loadCustomWorkingDirectoryFromGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("customWorkingDir", customWorkingDir != null ? customWorkingDir : "");
+                callJavaScript("window.updateWorkingDirectory", escapeJs(gson.toJson(response)));
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取工作目录"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to load working directory from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取工作目录失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将当前项目工作目录保存到全局配置。
+     */
+    private void handleSaveWorkingDirectoryToGlobal() {
+        try {
+            settingsService.saveCustomWorkingDirectoryToGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to save working directory to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存工作目录到全局配置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 从全局配置加载流式传输设置到当前项目。
+     */
+    private void handleLoadStreamingEnabledFromGlobal() {
+        try {
+            boolean streamingEnabled = settingsService.loadStreamingEnabledFromGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("streamingEnabled", streamingEnabled);
+                callJavaScript("window.updateStreamingEnabled", escapeJs(gson.toJson(response)));
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取流式传输设置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to load streaming from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取流式传输设置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将当前项目流式传输设置保存到全局配置。
+     */
+    private void handleSaveStreamingEnabledToGlobal() {
+        try {
+            settingsService.saveStreamingEnabledToGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to save streaming to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存流式传输设置到全局配置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 从全局配置加载 Codex 沙箱模式到当前项目。
+     */
+    private void handleLoadCodexSandboxModeFromGlobal() {
+        try {
+            String sandboxMode = settingsService.loadCodexSandboxModeFromGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("sandboxMode", sandboxMode);
+                callJavaScript("window.updateCodexSandboxMode", escapeJs(gson.toJson(response)));
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取 Codex 沙箱模式"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to load Codex sandbox mode from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取 Codex 沙箱模式失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将当前项目 Codex 沙箱模式保存到全局配置。
+     */
+    private void handleSaveCodexSandboxModeToGlobal() {
+        try {
+            settingsService.saveCodexSandboxModeToGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to save Codex sandbox mode to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存 Codex 沙箱模式到全局配置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 从全局配置加载自动打开文件设置到当前项目。
+     */
+    private void handleLoadAutoOpenFileEnabledFromGlobal() {
+        try {
+            boolean autoOpenFileEnabled = settingsService.loadAutoOpenFileEnabledFromGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("autoOpenFileEnabled", autoOpenFileEnabled);
+                callJavaScript("window.updateAutoOpenFileEnabled", escapeJs(gson.toJson(response)));
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取自动打开文件设置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to load auto open file from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取自动打开文件设置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将当前项目自动打开文件设置保存到全局配置。
+     */
+    private void handleSaveAutoOpenFileEnabledToGlobal() {
+        try {
+            settingsService.saveAutoOpenFileEnabledToGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to save auto open file to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存自动打开文件设置到全局配置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 从全局配置加载 Commit Prompt 到当前项目。
+     */
+    private void handleLoadCommitPromptFromGlobal() {
+        try {
+            String commitPrompt = settingsService.loadCommitPromptFromGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("commitPrompt", commitPrompt);
+                callJavaScript("window.updateCommitPrompt", escapeJs(gson.toJson(response)));
+                callJavaScript("window.showSuccess", escapeJs("已从全局配置读取 Commit 提示词"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to load commit prompt from global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("从全局配置读取 Commit 提示词失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 将当前项目 Commit Prompt 保存到全局配置。
+     */
+    private void handleSaveCommitPromptToGlobal() {
+        try {
+            settingsService.saveCommitPromptToGlobal(getCurrentProjectPath());
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showSuccess", escapeJs("已保存到全局配置"));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to save commit prompt to global: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存 Commit 提示词到全局配置失败: " + e.getMessage()));
+            });
+        }
     }
 }
