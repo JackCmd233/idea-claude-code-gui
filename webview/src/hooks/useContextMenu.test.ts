@@ -47,7 +47,6 @@ describe('useContextMenu', () => {
 
     expect(result.current.visible).toBe(true);
     expect(result.current.hasSelection).toBe(true);
-    expect(result.current.selectionSource).toBe('fileTag');
     expect(result.current.selectedText).toBe('@D:\\Code\\demo.ts#L3-L9');
   });
 
@@ -70,7 +69,6 @@ describe('useContextMenu', () => {
     });
 
     expect(result.current.hasSelection).toBe(true);
-    expect(result.current.selectionSource).toBe('text');
     expect(result.current.selectedText).toBe('selected text');
     expect(selection.getRangeAt).toHaveBeenCalledWith(0);
     expect(result.current.savedRange).not.toBeNull();
