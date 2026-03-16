@@ -1341,5 +1341,10 @@
     "title": "Что нового",
     "close": "Понятно",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "Провайдер не настроен",
+    "providerNotConfiguredDesc": "Провайдер ИИ ещё не настроен. Пожалуйста, добавьте API-ключ в настройках провайдера перед началом разговора.",
+    "goToProviderSettings": "Перейти к настройкам провайдера"
   }
 }

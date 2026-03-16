@@ -1438,5 +1438,10 @@
     "title": "What's New",
     "close": "Got it",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "Provider Not Configured",
+    "providerNotConfiguredDesc": "No AI provider is set up yet. Please add an API key in provider settings before starting a conversation.",
+    "goToProviderSettings": "Go to Provider Settings"
   }
 }

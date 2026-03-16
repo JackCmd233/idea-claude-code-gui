@@ -501,6 +501,10 @@ const App = () => {
                 messagesEndRef={messagesEndRef}
                 onMessageNodeRef={handleMessageNodeRef}
                 onCollapsedCountChange={setAnchorCollapsedCount}
+                onNavigateToProviderSettings={() => {
+                  setSettingsInitialTab('providers');
+                  setCurrentView('settings');
+                }}
               />
             </div>
           </div>

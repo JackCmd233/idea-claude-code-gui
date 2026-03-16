@@ -1320,5 +1320,10 @@
     "title": "版本更新",
     "close": "知道了",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "供應商未設定",
+    "providerNotConfiguredDesc": "尚未設定 AI 供應商，請先在供應商設定中新增 API Key 才能開始對話。",
+    "goToProviderSettings": "前往供應商設定"
   }
 }

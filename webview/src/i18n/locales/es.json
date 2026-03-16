@@ -1315,5 +1315,10 @@
     "title": "Novedades",
     "close": "Entendido",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "Proveedor no configurado",
+    "providerNotConfiguredDesc": "No se ha configurado ningún proveedor de IA. Agrega una clave API en la configuración del proveedor antes de iniciar una conversación.",
+    "goToProviderSettings": "Ir a la configuración del proveedor"
   }
 }

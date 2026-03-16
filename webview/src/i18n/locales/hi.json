@@ -1314,5 +1314,10 @@
     "title": "नया क्या है",
     "close": "समझ गया",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "प्रदाता कॉन्फ़िगर नहीं है",
+    "providerNotConfiguredDesc": "अभी तक कोई AI प्रदाता सेट अप नहीं है। बातचीत शुरू करने से पहले कृपया प्रदाता सेटिंग्स में API कुंजी जोड़ें।",
+    "goToProviderSettings": "प्रदाता सेटिंग्स पर जाएं"
   }
 }

@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../../types';
 
 import MarkdownBlock from '../MarkdownBlock';
+import { ProviderNotConfiguredCard, isProviderNotConfiguredError } from './ProviderNotConfiguredCard';
 import {
   EditToolBlock,
   EditToolGroupBlock,
@@ -30,6 +31,7 @@ export interface MessageItemProps {
   findToolResult: (toolId: string | undefined, messageIndex: number) => ToolResultBlock | null | undefined;
   extractMarkdownContent: (message: ClaudeMessage) => string;
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
+  onNavigateToProviderSettings?: () => void;
 }
 
 type GroupedBlock =
@@ -204,6 +206,7 @@ export const MessageItem = memo(function MessageItem({
   findToolResult,
   extractMarkdownContent,
   onNodeRef,
+  onNavigateToProviderSettings,
 }: MessageItemProps): React.ReactElement {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [showStreamingConnectHint, setShowStreamingConnectHint] = useState(false);
@@ -326,8 +329,18 @@ export const MessageItem = memo(function MessageItem({
     }
   }, [message.type, messageKey, onNodeRef]);
 
+  const isProviderNotConfigured = message.type === 'error' && isProviderNotConfiguredError(getMessageText(message));
+
   const renderGroupedBlocks = () => {
     if (message.type === 'error') {
+      if (isProviderNotConfigured) {
+        return (
+          <ProviderNotConfiguredCard
+            t={t}
+            onNavigateToSettings={onNavigateToProviderSettings}
+          />
+        );
+      }
       return <MarkdownBlock content={getMessageText(message)} />;
     }
 
@@ -490,7 +503,7 @@ export const MessageItem = memo(function MessageItem({
 
   return (
     <div
-      className={`message ${message.type}`}
+      className={`message ${message.type}${isProviderNotConfigured ? ' provider-not-configured' : ''}`}
       ref={anchorRefCallback}
       data-message-anchor-id={message.type === 'user' ? messageKey : undefined}
     >

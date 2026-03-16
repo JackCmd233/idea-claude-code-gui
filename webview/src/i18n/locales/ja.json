@@ -1320,5 +1320,10 @@
     "title": "更新情報",
     "close": "了解",
     "page": "{{current}} / {{total}}"
+  },
+  "error": {
+    "providerNotConfigured": "プロバイダー未設定",
+    "providerNotConfiguredDesc": "AIプロバイダーがまだ設定されていません。会話を開始する前に、プロバイダー設定でAPIキーを追加してください。",
+    "goToProviderSettings": "プロバイダー設定へ"
   }
 }
