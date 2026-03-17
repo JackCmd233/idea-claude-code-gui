@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, ModelInfo, PermissionMode, ReasoningEffort } from './types';
-import { ConfigSelect, ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
+import { ConfigSelect, ModelSelect, ModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
 import { CLAUDE_MODELS, CODEX_MODELS } from './types';
 import { STORAGE_KEYS, validateCodexCustomModels } from '../../types/provider';
 import type { CodexCustomModel } from '../../types/provider';
@@ -243,8 +243,6 @@ export const ButtonArea = ({
       {/* Left side: selectors */}
       <div className="button-area-left">
         <ConfigSelect
-          currentProvider={currentProvider}
-          onProviderChange={handleProviderSelect}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
           streamingEnabled={streamingEnabled}
@@ -252,6 +250,11 @@ export const ButtonArea = ({
           selectedAgent={selectedAgent}
           onAgentSelect={onAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
+        />
+        <ProviderSelect
+          value={currentProvider}
+          onChange={handleProviderSelect}
+          compact
         />
         <ModeSelect value={permissionMode} onChange={handleModeSelect} provider={currentProvider} />
         <ModelSelect value={selectedModel} onChange={handleModelSelect} models={availableModels} currentProvider={currentProvider} onAddModel={onAddModel} />

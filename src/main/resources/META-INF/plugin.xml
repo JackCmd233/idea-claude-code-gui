@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>com.github.jetbrains-long-gui</id>
-    <name>CC GUI</name>
+    <name>CC GUI（Claude and Codex）</name>
     <vendor>Jordan</vendor>
 
     <!-- Resource bundle for i18n -->

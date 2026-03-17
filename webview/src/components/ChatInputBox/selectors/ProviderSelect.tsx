@@ -1,34 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Claude, OpenAI, Gemini } from '@lobehub/icons';
 import { AVAILABLE_PROVIDERS } from '../types';
+import { ProviderModelIcon } from '../../shared/ProviderModelIcon';
 
 interface ProviderSelectProps {
   value: string;
   onChange?: (providerId: string) => void;
+  /** When true, shows only the provider icon without text or chevron */
+  compact?: boolean;
 }
-
-/**
- * Provider icon mapping
- */
-const ProviderIcon = ({ providerId, size = 16, colored = false }: { providerId: string; size?: number; colored?: boolean }) => {
-  switch (providerId) {
-    case 'claude':
-      return colored ? <Claude.Color size={size} /> : <Claude.Avatar size={size} />;
-    case 'codex':
-      return <OpenAI.Avatar size={size} />;
-    case 'gemini':
-      return colored ? <Gemini.Color size={size} /> : <Gemini.Avatar size={size} />;
-    default:
-      return colored ? <Claude.Color size={size} /> : <Claude.Avatar size={size} />;
-  }
-};
 
 /**
  * ProviderSelect - AI provider selector component
  * Supports switching between Claude, Codex, Gemini, and other providers
+ * compact mode: icon-only button for toolbar use
  */
-export const ProviderSelect = ({ value, onChange }: ProviderSelectProps) => {
+export const ProviderSelect = ({ value, onChange, compact = false }: ProviderSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -115,13 +103,17 @@ export const ProviderSelect = ({ value, onChange }: ProviderSelectProps) => {
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <button
           ref={buttonRef}
-          className="selector-button"
+          className={`selector-button${compact ? ' provider-compact' : ''}`}
           onClick={handleToggle}
           title={`${t('config.switchProvider')}: ${getProviderLabel(currentProvider.id)}`}
         >
-          <ProviderIcon providerId={currentProvider.id} size={12} />
-          <span>{getProviderLabel(currentProvider.id)}</span>
-          <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
+          <ProviderModelIcon providerId={currentProvider.id} size={compact ? 16 : 12} colored={compact} />
+          {!compact && (
+            <>
+              <span>{getProviderLabel(currentProvider.id)}</span>
+              <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
+            </>
+          )}
         </button>
 
         {isOpen && (
@@ -146,7 +138,7 @@ export const ProviderSelect = ({ value, onChange }: ProviderSelectProps) => {
                   cursor: provider.enabled ? 'pointer' : 'not-allowed',
                 }}
               >
-                <ProviderIcon providerId={provider.id} size={16} colored={true} />
+                <ProviderModelIcon providerId={provider.id} size={16} colored />
                 <span>{getProviderLabel(provider.id)}</span>
                 {provider.id === value && (
                   <span className="codicon codicon-check check-mark" />
@@ -158,10 +150,11 @@ export const ProviderSelect = ({ value, onChange }: ProviderSelectProps) => {
       </div>
 
       {/* Toast message */}
-      {showToast && (
-        <div className="selector-toast">
+      {showToast && createPortal(
+        <div className="selector-toast" style={{ zIndex: 20000 }}>
           {toastMessage}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

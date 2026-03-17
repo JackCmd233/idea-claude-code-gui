@@ -67,6 +67,10 @@ public class PermissionService {
     private static final int FILE_WAIT_INITIAL_DELAY_MS = 50;
     private static final int FILE_WAIT_MAX_RETRIES = 3;
 
+    // Dialog shower registration wait configuration (for diff review timing issues)
+    private static final int DIALOG_SHOWER_POLL_INTERVAL_MS = 100;
+    private static final int DIALOG_SHOWER_POLL_MAX_ATTEMPTS = 20;
+
     // Debug logging helper methods
     private void debugLog(String tag, String message) {
         LOG.debug(String.format("[%s] %s", tag, message));
@@ -1498,16 +1502,23 @@ public class PermissionService {
 
         Project matchedProject = findProjectByCwd(request);
 
-        // Retry once if dialogShowers is empty (timing issue: registration may not be complete yet)
+        // Retry if dialogShowers is empty (timing issue: webview registration may not be complete yet)
         if (matchedProject == null && this.dialogShowers.isEmpty()) {
-            LOG.info("[DIFF_REVIEW] dialogShowers empty, retrying after 100ms...");
+            long maxWaitMs = (long) DIALOG_SHOWER_POLL_INTERVAL_MS * DIALOG_SHOWER_POLL_MAX_ATTEMPTS;
+            LOG.info("[DIFF_REVIEW] dialogShowers empty, waiting for registration (max " + maxWaitMs + "ms)...");
+            int waited = 0;
             try {
-                Thread.sleep(100);
+                for (int i = 0; i < DIALOG_SHOWER_POLL_MAX_ATTEMPTS && this.dialogShowers.isEmpty(); i++) {
+                    Thread.sleep(DIALOG_SHOWER_POLL_INTERVAL_MS);
+                    waited += DIALOG_SHOWER_POLL_INTERVAL_MS;
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             matchedProject = findProjectByCwd(request);
-            LOG.info("[DIFF_REVIEW] Retry result: " + (matchedProject != null ? matchedProject.getName() : "null"));
+            LOG.info("[DIFF_REVIEW] Retry result after " + waited + "ms"
+                    + " (dialogShowers.empty=" + this.dialogShowers.isEmpty() + ")"
+                    + ": " + (matchedProject != null ? matchedProject.getName() : "null"));
         }
 
         if (matchedProject == null) {

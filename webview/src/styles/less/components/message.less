@@ -238,6 +238,79 @@
     border-left: 2px solid var(--color-message-error-border);
 }
 
+/* Provider Not Configured - override error styling to use amber/warning tone */
+.message.error.provider-not-configured {
+    background: transparent;
+    border-left: none;
+}
+
+/* Provider Not Configured Card */
+.provider-not-configured-card {
+    background: var(--color-provider-card-bg);
+    border: 1px solid var(--color-provider-card-border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.provider-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.provider-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--color-provider-card-icon-bg);
+    color: var(--color-provider-card-accent);
+    flex-shrink: 0;
+}
+
+.provider-card-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--color-provider-card-accent);
+}
+
+.provider-card-description {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.provider-card-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--color-provider-card-action-border);
+    background: var(--color-provider-card-action-bg);
+    color: var(--color-provider-card-accent);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        background: var(--color-provider-card-action-hover-bg);
+        border-color: var(--color-provider-card-action-hover-border);
+    }
+
+    &:active {
+        background: var(--color-provider-card-action-active-bg);
+    }
+}
+
 /* AI Indicator Dot */
 .ai-indicator-dot {
     width: 6px;

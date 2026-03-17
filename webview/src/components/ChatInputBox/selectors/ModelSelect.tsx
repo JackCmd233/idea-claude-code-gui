@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Claude, OpenAI, Gemini } from '@lobehub/icons';
 import { AVAILABLE_MODELS } from '../types';
 import type { ModelInfo } from '../types';
 import { readClaudeModelMapping } from '../../../utils/claudeModelMapping';
+import { ProviderModelIcon } from '../../shared/ProviderModelIcon';
 
 interface ModelSelectProps {
   value: string;
@@ -58,18 +58,23 @@ const MODEL_ID_TO_MAPPING_KEY: Record<string, string> = {
 };
 
 /**
- * Model icon component - displays different icons based on provider type
+ * Resolve the display model name for icon matching.
+ * For mapped models, returns the mapped name; otherwise the original ID.
  */
-const ModelIcon = ({ provider, size = 16 }: { provider?: string; size?: number }) => {
-  switch (provider) {
-    case 'codex':
-      return <OpenAI.Avatar size={size} />;
-    case 'gemini':
-      return <Gemini.Color size={size} />;
-    case 'claude':
-    default:
-      return <Claude.Color size={size} />;
+const resolveModelIdForIcon = (
+  modelId: string,
+  modelMapping: Record<string, string | undefined>,
+  mappingKeyMap: Record<string, string>
+): string => {
+  const mappingKey = mappingKeyMap[modelId];
+  if (mappingKey) {
+    // opus_1m shares the same underlying model as opus; fall back when no
+    // dedicated mapping entry exists so the icon resolves correctly.
+    const mapped = modelMapping[mappingKey]
+      || (mappingKey === 'opus_1m' ? modelMapping['opus'] : undefined);
+    if (mapped?.trim()) return mapped.trim();
   }
+  return modelId;
 };
 
 /**
@@ -173,7 +178,12 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
         onClick={handleToggle}
         title={t('chat.currentModel', { model: getModelLabel(currentModel) })}
       >
-        <ModelIcon provider={currentProvider} size={12} />
+        <ProviderModelIcon
+          providerId={currentProvider}
+          modelId={resolveModelIdForIcon(currentModel.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+          size={12}
+          colored
+        />
         <span className="selector-button-text">{getModelLabel(currentModel)}</span>
         <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
       </button>
@@ -196,7 +206,12 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
               className={`selector-option ${model.id === value ? 'selected' : ''}`}
               onClick={() => handleSelect(model.id)}
             >
-              <ModelIcon provider={currentProvider} size={16} />
+              <ProviderModelIcon
+                providerId={currentProvider}
+                modelId={resolveModelIdForIcon(model.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+                size={16}
+                colored
+              />
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <span>{getModelLabel(model)}</span>
                 {getModelDescription(model) && (

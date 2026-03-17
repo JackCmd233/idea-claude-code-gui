@@ -21,6 +21,17 @@
   color: var(--text-primary);
 }
 
+/* Compact provider icon button */
+.selector-button.provider-compact {
+  padding: 4px 5px;
+  gap: 0;
+  border-radius: 4px;
+}
+
+.selector-button.provider-compact:hover {
+  background: var(--button-hover);
+}
+
 /* Auto mode (bypassPermissions) - subtle orange indicator */
 .selector-button.mode-auto-active {
   color: #cc8400;

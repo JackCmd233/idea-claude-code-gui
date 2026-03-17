@@ -86,7 +86,7 @@ public class DiffReviewService {
 
         try {
             String originalContent = readFileContent(filePath);
-            String proposedContent = computeProposedContent(toolName, inputs, originalContent);
+            String proposedContent = computeProposedContent(toolName, inputs, originalContent, filePath);
 
             if (proposedContent == null) {
                 LOG.warn("DiffReview: Could not compute proposed content for " + toolName);
@@ -180,11 +180,12 @@ public class DiffReviewService {
     private static String computeProposedContent(
             @NotNull String toolName,
             @NotNull JsonObject inputs,
-            @Nullable String originalContent
+            @Nullable String originalContent,
+            @NotNull String filePath
     ) {
         switch (toolName) {
             case "Edit":
-                return computeEditProposedContent(inputs, originalContent);
+                return computeEditProposedContent(inputs, originalContent, filePath);
             case "Write":
                 return computeWriteProposedContent(inputs);
             default:
@@ -199,10 +200,11 @@ public class DiffReviewService {
     @Nullable
     private static String computeEditProposedContent(
             @NotNull JsonObject inputs,
-            @Nullable String originalContent
+            @Nullable String originalContent,
+            @NotNull String filePath
     ) {
         if (originalContent == null) {
-            LOG.warn("DiffReview: Edit tool called on non-existent file");
+            LOG.warn("DiffReview: Edit tool called on non-existent file: " + filePath);
             return null;
         }
 
@@ -212,25 +214,90 @@ public class DiffReviewService {
                 ? inputs.get("new_string").getAsString() : null;
 
         if (oldString == null || newString == null) {
-            LOG.warn("DiffReview: Edit tool missing old_string or new_string");
+            LOG.warn("DiffReview: Edit tool missing old_string or new_string for " + filePath);
             return null;
+        }
+
+        // No-op edit: old and new are identical
+        if (oldString.equals(newString)) {
+            return originalContent;
         }
 
         boolean replaceAll = inputs.has("replace_all") && inputs.get("replace_all").getAsBoolean();
 
-        if (replaceAll) {
-            return originalContent.replace(oldString, newString);
-        } else {
+        if (!replaceAll) {
+            // Try exact match first
             int index = originalContent.indexOf(oldString);
+            String effectiveOld = oldString;
+            String effectiveNew = newString;
+
+            // Fallback: try line-ending variants (Windows CRLF/LF mismatch)
+            if (index < 0) {
+                String[] variant = findLineEndingVariant(originalContent, oldString, newString);
+                if (variant != null) {
+                    effectiveOld = variant[0];
+                    effectiveNew = variant[1];
+                    index = originalContent.indexOf(effectiveOld);
+                    LOG.info("DiffReview: Matched old_string after normalizing " + variant[2]
+                            + " for " + filePath);
+                }
+            }
+
             if (index >= 0) {
                 return originalContent.substring(0, index)
-                        + newString
-                        + originalContent.substring(index + oldString.length());
-            } else {
-                LOG.warn("DiffReview: old_string not found in file content");
-                return null;
+                        + effectiveNew
+                        + originalContent.substring(index + effectiveOld.length());
+            }
+
+            LOG.warn("DiffReview: old_string not found in file content for " + filePath
+                    + " (fileLength=" + originalContent.length()
+                    + ", oldStringLength=" + oldString.length() + ")");
+            return null;
+        }
+
+        // For replace_all: try exact match first
+        String result = originalContent.replace(oldString, newString);
+        if (!result.equals(originalContent)) {
+            return result;
+        }
+
+        // Fallback: try line-ending variants to avoid silent no-ops
+        String[] variant = findLineEndingVariant(originalContent, oldString, newString);
+        if (variant != null) {
+            result = originalContent.replace(variant[0], variant[1]);
+            if (!result.equals(originalContent)) {
+                LOG.info("DiffReview: Matched old_string after normalizing " + variant[2]
+                        + " (replace_all) for " + filePath);
+                return result;
             }
         }
+
+        LOG.warn("DiffReview: old_string not found in file content for " + filePath
+                + " (replace_all, fileLength=" + originalContent.length()
+                + ", oldStringLength=" + oldString.length() + ")");
+        return null;
+    }
+
+    /**
+     * Find a line-ending variant of oldString that exists in content.
+     * Tries LF->CRLF and CRLF->LF conversions to handle Windows/Unix line ending mismatches.
+     *
+     * @return [effectiveOld, effectiveNew, variantDescription] if a variant matches, null otherwise
+     */
+    @Nullable
+    private static String[] findLineEndingVariant(
+            @NotNull String content, @NotNull String oldString, @NotNull String newString) {
+        // Try LF -> CRLF (tool sends LF, file uses CRLF)
+        String crlfOld = oldString.replace("\n", "\r\n");
+        if (!crlfOld.equals(oldString) && content.contains(crlfOld)) {
+            return new String[]{crlfOld, newString.replace("\n", "\r\n"), "LF->CRLF"};
+        }
+        // Try CRLF -> LF (tool sends CRLF, file uses LF)
+        String lfOld = oldString.replace("\r\n", "\n");
+        if (!lfOld.equals(oldString) && content.contains(lfOld)) {
+            return new String[]{lfOld, newString.replace("\r\n", "\n"), "CRLF->LF"};
+        }
+        return null;
     }
 
     /**
