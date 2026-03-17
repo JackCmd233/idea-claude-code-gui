@@ -71,10 +71,12 @@ public class BridgePreloader implements ProjectActivity {
             try {
                 BridgeDirectoryResolver resolver = getSharedResolver();
 
-                // Trigger extraction (non-blocking on this pooled thread)
-                resolver.findSdkDir();
-
-                LOG.info("[BridgePreloader] Bridge preload completed for project: " + project.getName());
+                // Preload is best-effort; a missing bridge here should not be treated as a fatal startup error.
+                if (resolver.findSdkDirForPreload() != null) {
+                    LOG.info("[BridgePreloader] Bridge preload completed for project: " + project.getName());
+                } else {
+                    LOG.info("[BridgePreloader] Bridge preload skipped for project: " + project.getName());
+                }
             } catch (Exception e) {
                 LOG.warn("[BridgePreloader] Bridge preload failed: " + e.getMessage(), e);
             }

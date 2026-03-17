@@ -69,11 +69,28 @@ public class BridgeDirectoryResolver {
     private final AtomicReference<CompletableFuture<File>> extractionFutureRef = new AtomicReference<>();
     private volatile CompletableFuture<Boolean> extractionReadyFuture = new CompletableFuture<>();
 
+    private enum ResolutionMode {
+        STRICT,
+        PRELOAD
+    }
+
     /**
      * Find the claude-bridge directory.
      * Priority: manually set path > configured path > embedded path > cached path > fallback
      */
     public File findSdkDir() {
+        return findSdkDir(ResolutionMode.STRICT);
+    }
+
+    /**
+     * Preload the bridge directory without treating a miss as a fatal startup error.
+     * Used by background startup warmup only.
+     */
+    public File findSdkDirForPreload() {
+        return findSdkDir(ResolutionMode.PRELOAD);
+    }
+
+    private File findSdkDir(ResolutionMode resolutionMode) {
         // Priority 0: Manually set path (via setSdkDir(), highest priority)
         if (this.manuallySdkDir != null && isValidBridgeDir(this.manuallySdkDir)) {
             LOG.debug("[BridgeResolver] Using manually set path: " + this.manuallySdkDir.getAbsolutePath());
@@ -171,16 +188,35 @@ public class BridgeDirectoryResolver {
         }
 
         // If extraction is not in progress, this is a real error
-        LOG.warn("[BridgeResolver] Cannot find ai-bridge directory, tried locations:");
-        for (File dir : possibleDirs) {
-            LOG.warn("  - " + dir.getAbsolutePath() + " (exists: " + dir.exists() + ")");
+        logMissingBridge(possibleDirs, resolutionMode);
+
+        return null;
+    }
+
+    private void logMissingBridge(List<File> possibleDirs, ResolutionMode resolutionMode) {
+        String summary = "[BridgeResolver] Failed to find valid ai-bridge directory. "
+                + "Please ensure the plugin is properly installed or set CLAUDE_BRIDGE_PATH environment variable.";
+
+        if (resolutionMode == ResolutionMode.STRICT) {
+            LOG.warn("[BridgeResolver] Cannot find ai-bridge directory, tried locations:");
+            for (File dir : possibleDirs) {
+                LOG.warn("  - " + dir.getAbsolutePath() + " (exists: " + dir.exists() + ")");
+            }
+            // Do not return a non-existent default path, as it would cause ProcessBuilder to use an incorrect working directory.
+            // For example, when user.dir is "/", it would produce the invalid path "/ai-bridge".
+            LOG.error(summary);
+        } else {
+            LOG.debug("[BridgeResolver] Preload skipped because ai-bridge is not ready yet.");
+            LOG.debug(summary);
+            for (File dir : possibleDirs) {
+                LOG.debug("[BridgeResolver] Preload candidate: " + dir.getAbsolutePath() + " (exists: " + dir.exists() + ")");
+            }
         }
 
-        // Do not return a non-existent default path, as it would cause ProcessBuilder to use an incorrect working directory.
-        // For example, when user.dir is "/", it would produce the invalid path "/ai-bridge".
-        LOG.error("[BridgeResolver] Failed to find valid ai-bridge directory. " +
-                "Please ensure the plugin is properly installed or set CLAUDE_BRIDGE_PATH environment variable.");
+        logDevelopmentBridgeHints(possibleDirs);
+    }
 
+    private void logDevelopmentBridgeHints(List<File> possibleDirs) {
         // Check if this is a development environment (source directory missing node_modules)
         for (File dir : possibleDirs) {
             if (dir.exists() && dir.isDirectory()) {
@@ -194,8 +230,6 @@ public class BridgeDirectoryResolver {
                 }
             }
         }
-
-        return null;
     }
 
     /**
@@ -243,8 +277,10 @@ public class BridgeDirectoryResolver {
         try {
             String pluginsRoot = PathManager.getPluginsPath();
             if (!pluginsRoot.isEmpty()) {
+                File pluginsRootDir = Paths.get(pluginsRoot).toFile();
                 addCandidate(possibleDirs, Paths.get(pluginsRoot, PLUGIN_DIR_NAME, SDK_DIR_NAME).toFile());
                 addCandidate(possibleDirs, Paths.get(pluginsRoot, PlatformUtils.getPluginId(), SDK_DIR_NAME).toFile());
+                addPluginChildBridgeCandidates(possibleDirs, pluginsRootDir);
             }
 
             String systemPath = PathManager.getSystemPath();
@@ -252,6 +288,7 @@ public class BridgeDirectoryResolver {
                 Path sandboxPath = Paths.get(systemPath, "plugins");
                 addCandidate(possibleDirs, sandboxPath.resolve(PLUGIN_DIR_NAME).resolve(SDK_DIR_NAME).toFile());
                 addCandidate(possibleDirs, sandboxPath.resolve(PlatformUtils.getPluginId()).resolve(SDK_DIR_NAME).toFile());
+                addPluginChildBridgeCandidates(possibleDirs, sandboxPath.toFile());
             }
         } catch (Throwable t) {
             LOG.debug("[BridgeResolver] Cannot infer from plugin path: " + t.getMessage());
@@ -342,18 +379,45 @@ public class BridgeDirectoryResolver {
         possibleDirs.add(dir);
     }
 
+    private void addPluginChildBridgeCandidates(List<File> possibleDirs, File pluginsRootDir) {
+        if (pluginsRootDir == null || !pluginsRootDir.exists() || !pluginsRootDir.isDirectory()) {
+            return;
+        }
+        File[] pluginDirs = pluginsRootDir.listFiles(File::isDirectory);
+        if (pluginDirs == null) {
+            return;
+        }
+        // In the development sandbox state, the plug-in directory name may not be pluginId. Scan the first-level subdirectory for the bottom line.
+        for (File pluginDir : pluginDirs) {
+            addCandidate(possibleDirs, new File(pluginDir, SDK_DIR_NAME));
+        }
+    }
+
+    private void addPluginChildArchiveCandidates(List<File> fallbackCandidates, File pluginsRootDir) {
+        if (pluginsRootDir == null || !pluginsRootDir.exists() || !pluginsRootDir.isDirectory()) {
+            return;
+        }
+        File[] pluginDirs = pluginsRootDir.listFiles(File::isDirectory);
+        if (pluginDirs == null) {
+            return;
+        }
+        for (File pluginDir : pluginDirs) {
+            fallbackCandidates.add(new File(pluginDir, SDK_ARCHIVE_NAME));
+        }
+    }
+
     private boolean isRootDirectory(File dir) {
         return dir.getParentFile() == null;
     }
 
     private File ensureEmbeddedBridgeExtracted() {
         try {
-            LOG.info("[BridgeResolver] === Starting embedded bridge extraction check ===");
-            LOG.info("[BridgeResolver] Current thread: " + Thread.currentThread().getName());
-            LOG.info("[BridgeResolver] Is EDT: " + ApplicationManager.getApplication().isDispatchThread());
+            LOG.debug("[BridgeResolver] === Starting embedded bridge extraction check ===");
+            LOG.debug("[BridgeResolver] Current thread: " + Thread.currentThread().getName());
+            LOG.debug("[BridgeResolver] Is EDT: " + ApplicationManager.getApplication().isDispatchThread());
 
             PluginId pluginId = PluginId.getId(PlatformUtils.getPluginId());
-            LOG.info("[BridgeResolver] Plugin ID: " + PlatformUtils.getPluginId());
+            LOG.debug("[BridgeResolver] Plugin ID: " + PlatformUtils.getPluginId());
             IdeaPluginDescriptor descriptor = PluginManagerCore.getPlugin(pluginId);
             if (descriptor == null) {
                 LOG.warn("[BridgeResolver] Cannot get plugin descriptor by PluginId: " + PlatformUtils.getPluginId());
@@ -383,14 +447,14 @@ public class BridgeDirectoryResolver {
             }
 
             File pluginDir = descriptor.getPluginPath().toFile();
-            LOG.info("[BridgeResolver] Plugin directory: " + pluginDir.getAbsolutePath());
-            LOG.info("[BridgeResolver] Plugin directory exists: " + pluginDir.exists());
+            LOG.debug("[BridgeResolver] Plugin directory: " + pluginDir.getAbsolutePath());
+            LOG.debug("[BridgeResolver] Plugin directory exists: " + pluginDir.exists());
 
             File archiveFile = new File(pluginDir, SDK_ARCHIVE_NAME);
-            LOG.info("[BridgeResolver] Looking for archive: " + archiveFile.getAbsolutePath());
-            LOG.info("[BridgeResolver] Archive exists: " + archiveFile.exists());
+            LOG.debug("[BridgeResolver] Looking for archive: " + archiveFile.getAbsolutePath());
+            LOG.debug("[BridgeResolver] Archive exists: " + archiveFile.exists());
             if (archiveFile.exists()) {
-                LOG.info("[BridgeResolver] Archive size: " + archiveFile.length() + " bytes");
+                LOG.debug("[BridgeResolver] Archive size: " + archiveFile.length() + " bytes");
             }
 
             if (!archiveFile.exists()) {
@@ -420,6 +484,7 @@ public class BridgeDirectoryResolver {
                         if (maybeTopPlugins.exists() && maybeTopPlugins.isDirectory()) {
                             fallbackCandidates.add(new File(maybeTopPlugins, PLUGIN_DIR_NAME + File.separator + SDK_ARCHIVE_NAME));
                             fallbackCandidates.add(new File(maybeTopPlugins, PlatformUtils.getPluginId() + File.separator + SDK_ARCHIVE_NAME));
+                            addPluginChildArchiveCandidates(fallbackCandidates, maybeTopPlugins);
                         }
 
                         // system/config siblings under this parent
@@ -428,17 +493,19 @@ public class BridgeDirectoryResolver {
                         if (maybeSystemPlugins.exists() && maybeSystemPlugins.isDirectory()) {
                             fallbackCandidates.add(new File(maybeSystemPlugins, PLUGIN_DIR_NAME + File.separator + SDK_ARCHIVE_NAME));
                             fallbackCandidates.add(new File(maybeSystemPlugins, PlatformUtils.getPluginId() + File.separator + SDK_ARCHIVE_NAME));
+                            addPluginChildArchiveCandidates(fallbackCandidates, maybeSystemPlugins);
                         }
                         if (maybeConfigPlugins.exists() && maybeConfigPlugins.isDirectory()) {
                             fallbackCandidates.add(new File(maybeConfigPlugins, PLUGIN_DIR_NAME + File.separator + SDK_ARCHIVE_NAME));
                             fallbackCandidates.add(new File(maybeConfigPlugins, PlatformUtils.getPluginId() + File.separator + SDK_ARCHIVE_NAME));
+                            addPluginChildArchiveCandidates(fallbackCandidates, maybeConfigPlugins);
                         }
 
                         ancestor = parent;
                         climbs++;
                     }
-                } catch (Throwable ignore) {
-                    // ignore fallback discovery errors
+                } catch (Exception e) {
+                    LOG.debug("[BridgeResolver] Fallback archive discovery failed: " + e.getMessage(), e);
                 }
 
                 // Log and try these candidate paths
@@ -457,15 +524,15 @@ public class BridgeDirectoryResolver {
             }
 
             File extractedDir = new File(pluginDir, SDK_DIR_NAME);
-            LOG.info("[BridgeResolver] Extracted dir path: " + extractedDir.getAbsolutePath());
-            LOG.info("[BridgeResolver] Extracted dir exists: " + extractedDir.exists());
+            LOG.debug("[BridgeResolver] Extracted dir path: " + extractedDir.getAbsolutePath());
+            LOG.debug("[BridgeResolver] Extracted dir exists: " + extractedDir.exists());
 
             // Prefer precomputed hash file (generated at build time) to avoid runtime calculation overhead
             // Note: hash file should be in the same directory as archiveFile
             File archiveParentDir = archiveFile.getParentFile();
             String archiveHash = readPrecomputedHash(archiveParentDir);
             if (archiveHash == null) {
-                LOG.info("[BridgeResolver] Precomputed hash file not found, falling back to runtime calculation");
+                LOG.debug("[BridgeResolver] Precomputed hash file not found, falling back to runtime calculation");
                 archiveHash = calculateFileHash(archiveFile);
             }
             if (archiveHash == null) {
@@ -473,15 +540,15 @@ public class BridgeDirectoryResolver {
                 archiveHash = "unknown";
             }
             String signature = descriptor.getVersion() + ":" + archiveHash;
-            LOG.info("[BridgeResolver] Expected signature: " + signature);
+            LOG.debug("[BridgeResolver] Expected signature: " + signature);
             File versionFile = new File(extractedDir, BRIDGE_VERSION_FILE);
-            LOG.info("[BridgeResolver] Version file path: " + versionFile.getAbsolutePath());
-            LOG.info("[BridgeResolver] Version file exists: " + versionFile.exists());
+            LOG.debug("[BridgeResolver] Version file path: " + versionFile.getAbsolutePath());
+            LOG.debug("[BridgeResolver] Version file exists: " + versionFile.exists());
 
             boolean isValid = isValidBridgeDir(extractedDir);
             boolean signatureMatches = bridgeSignatureMatches(versionFile, signature);
-            LOG.info("[BridgeResolver] isValidBridgeDir: " + isValid);
-            LOG.info("[BridgeResolver] signatureMatches: " + signatureMatches);
+            LOG.debug("[BridgeResolver] isValidBridgeDir: " + isValid);
+            LOG.debug("[BridgeResolver] signatureMatches: " + signatureMatches);
 
             if (isValid && signatureMatches) {
                 this.cachedSdkDir = extractedDir;
@@ -553,25 +620,25 @@ public class BridgeDirectoryResolver {
                     return null;
                 } else {
                     // Direct extraction on non-EDT thread
-                    LOG.info("[BridgeResolver] Starting synchronous extraction on non-EDT thread");
+                    LOG.debug("[BridgeResolver] Starting synchronous extraction on non-EDT thread");
                     try {
-                        LOG.info("[BridgeResolver] Step 1: Deleting old directory if exists");
+                        LOG.debug("[BridgeResolver] Step 1: Deleting old directory if exists");
                         deleteDirectory(extractedDir);
 
-                        LOG.info("[BridgeResolver] Step 2: Unzipping archive");
+                        LOG.debug("[BridgeResolver] Step 2: Unzipping archive");
                         unzipArchive(archiveFile, extractedDir);
-                        LOG.info("[BridgeResolver] Unzip completed, extractedDir exists: " + extractedDir.exists());
+                        LOG.debug("[BridgeResolver] Unzip completed, extractedDir exists: " + extractedDir.exists());
 
-                        LOG.info("[BridgeResolver] Step 3: Writing version file");
+                        LOG.debug("[BridgeResolver] Step 3: Writing version file");
                         Files.writeString(versionFile.toPath(), signature, StandardCharsets.UTF_8);
-                        LOG.info("[BridgeResolver] Version file written");
+                        LOG.debug("[BridgeResolver] Version file written");
 
                         // Wait for filesystem to sync and validate with retry
                         // This fixes race condition where unzip returns before files are fully synced
-                        LOG.info("[BridgeResolver] Step 4: Validating extracted directory");
+                        LOG.debug("[BridgeResolver] Step 4: Validating extracted directory");
                         File validatedDir = waitForValidBridgeDir(extractedDir, 3, 100);
                         if (validatedDir != null) {
-                            LOG.info("[BridgeResolver] Validation succeeded!");
+                            LOG.debug("[BridgeResolver] Validation succeeded!");
                             this.extractionState.set(ExtractionState.COMPLETED);
                             this.cachedSdkDir = validatedDir;
                             CompletableFuture<File> future = this.extractionFutureRef.get();
@@ -606,7 +673,7 @@ public class BridgeDirectoryResolver {
             // Note: All branches within synchronized block have explicit return statements,
             // so this code path is only reachable if an exception is caught below
         } catch (Exception e) {
-            LOG.error("[BridgeResolver] Auto-extraction of ai-bridge failed: " + e.getMessage());
+            LOG.error("[BridgeResolver] Auto-extraction of ai-bridge failed: " + e.getMessage(), e);
         }
         return null;
     }
@@ -619,6 +686,7 @@ public class BridgeDirectoryResolver {
             String content = Files.readString(versionFile.toPath(), StandardCharsets.UTF_8).trim();
             return expectedSignature.equals(content);
         } catch (IOException e) {
+            LOG.debug("[BridgeResolver] Failed to read bridge version file: " + versionFile.getAbsolutePath(), e);
             return false;
         }
     }
@@ -637,7 +705,7 @@ public class BridgeDirectoryResolver {
         for (int i = 0; i <= maxRetries; i++) {
             if (isValidBridgeDir(dir)) {
                 if (i > 0) {
-                    LOG.info("[BridgeResolver] Bridge validation succeeded after " + i + " retries");
+                    LOG.debug("[BridgeResolver] Bridge validation succeeded after " + i + " retries");
                 }
                 return dir;
             }
@@ -669,9 +737,9 @@ public class BridgeDirectoryResolver {
         }
 
         try {
-            LOG.info("[BridgeResolver] Waiting for extraction to complete...");
+            LOG.debug("[BridgeResolver] Waiting for extraction to complete...");
             File result = future.join(); // Block until completion
-            LOG.info("[BridgeResolver] Extraction completed, result: " + (result != null ? result.getAbsolutePath() : "null"));
+            LOG.debug("[BridgeResolver] Extraction completed, result: " + (result != null ? result.getAbsolutePath() : "null"));
             if (result != null) {
                 this.cachedSdkDir = result;
             }
