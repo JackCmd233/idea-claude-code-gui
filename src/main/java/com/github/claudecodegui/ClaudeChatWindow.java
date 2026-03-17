@@ -325,7 +325,7 @@ public class ClaudeChatWindow {
     }
 
     public void addCodeSnippetFromExternal(String selectionInfo) {
-        addCodeSnippet(selectionInfo);
+        chatWindowDelegate.addExternalSelection(selectionInfo);
     }
 
     public void updateTabStatus(ChatWindowDelegate.TabAnswerStatus status) {

@@ -43,7 +43,10 @@ import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
 import javax.swing.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -109,6 +112,7 @@ public class ChatWindowDelegate {
     // QuickFix pending state (owned by this delegate)
     private volatile String pendingQuickFixPrompt = null;
     private volatile MessageCallback pendingQuickFixCallback = null;
+    private final Queue<String> pendingExternalSelections = new ConcurrentLinkedQueue<>();
 
     public ChatWindowDelegate(DelegateHost host) {
         this.host = host;
@@ -435,6 +439,24 @@ public class ChatWindowDelegate {
         executeQuickFixInternal(prompt, callback);
     }
 
+    /**
+     * Add externally selected text to the chat input.
+     * When the frontend is still loading, queue the content and replay it after frontend_ready.
+     */
+    public void addExternalSelection(String selectionInfo) {
+        if (selectionInfo == null || selectionInfo.isEmpty()) {
+            return;
+        }
+
+        if (!host.isFrontendReady()) {
+            LOG.info("External selection: frontend not ready, queueing selection");
+            pendingExternalSelections.offer(selectionInfo);
+            return;
+        }
+
+        host.callJavaScript("addCodeSnippet", JsUtils.escapeJs(selectionInfo));
+    }
+
     private void executePendingQuickFix(String prompt, MessageCallback callback) {
         ClaudeSession session = host.getSession();
         if (session == null || host.isDisposed()) {
@@ -453,13 +475,16 @@ public class ChatWindowDelegate {
 
         host.getSession().send(prompt, null, (String) null).thenRun(() -> {
             List<ClaudeSession.Message> messages = host.getSession().getMessages();
-            if (!messages.isEmpty()) {
-                ClaudeSession.Message last = messages.get(messages.size() - 1);
-                if (last.type == ClaudeSession.Message.Type.ASSISTANT && last.content != null) {
-                    ApplicationManager.getApplication().invokeLater(() -> {
-                        callback.onComplete(SDKResult.success(last.content));
-                    });
-                }
+            try {
+                String response = extractQuickFixResponseOrThrow(messages);
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    callback.onComplete(SDKResult.success(response));
+                });
+            } catch (IllegalStateException ex) {
+                LOG.warn(ex.getMessage());
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    callback.onError(ex.getMessage());
+                });
             }
         }).exceptionally(ex -> {
             ApplicationManager.getApplication().invokeLater(() -> {
@@ -469,6 +494,23 @@ public class ChatWindowDelegate {
         });
     }
 
+    static String extractQuickFixResponseOrThrow(List<ClaudeSession.Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalStateException("QuickFix failed: no messages returned");
+        }
+
+        ClaudeSession.Message lastMessage = messages.get(messages.size() - 1);
+        if (lastMessage.type != ClaudeSession.Message.Type.ASSISTANT) {
+            throw new IllegalStateException("QuickFix failed: last message is not assistant");
+        }
+
+        if (lastMessage.content == null || lastMessage.content.trim().isEmpty()) {
+            throw new IllegalStateException("QuickFix failed: assistant response is empty");
+        }
+
+        return lastMessage.content;
+    }
+
     // ==================== Frontend Ready ====================
 
     public void handleFrontendReady() {
@@ -476,6 +518,7 @@ public class ChatWindowDelegate {
         host.setFrontendReady(true);
 
         host.getSessionLifecycleManager().sendCurrentPermissionMode();
+        flushPendingExternalSelections();
 
         if (pendingQuickFixPrompt != null && pendingQuickFixCallback != null) {
             LOG.info("Processing pending QuickFix message after frontend ready");
@@ -489,6 +532,23 @@ public class ChatWindowDelegate {
         }
 
         host.getStreamCoalescer().flush(null);
+    }
+
+    private void flushPendingExternalSelections() {
+        List<String> queuedSelections = new ArrayList<>();
+        String selectionInfo;
+        while ((selectionInfo = pendingExternalSelections.poll()) != null) {
+            queuedSelections.add(selectionInfo);
+        }
+
+        if (queuedSelections.isEmpty()) {
+            return;
+        }
+
+        LOG.info("Replaying " + queuedSelections.size() + " queued external selection(s) after frontend ready");
+        for (String queuedSelection : queuedSelections) {
+            host.callJavaScript("addCodeSnippet", JsUtils.escapeJs(queuedSelection));
+        }
     }
 
     // ==================== Cleanup ====================
