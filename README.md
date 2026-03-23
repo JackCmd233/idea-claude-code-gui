@@ -1,6 +1,8 @@
 <div align="center">
 
-# CC GUI (originally Claude Code GUI)
+# CC GUI（Claude or Codex）
+
+> Originally Claude Code GUI
 
 <img width="120" alt="Image" src="./docs/images/idea-claude-code-gui-logo.png" />
 
@@ -18,6 +20,12 @@
 A powerful IntelliJ IDEA plugin that provides a visual interface for **Claude Code** and **OpenAI Codex** dual AI tools, making AI-assisted programming more efficient and intuitive.
 
 <img width="850" alt="Image" src="/docs/img/banner.png" />
+
+---
+
+## Installation
+
+[IDEA Claude Code GUI Installation](https://plugins.jetbrains.com/plugin/30666-cc-gui)
 
 ---
 
@@ -59,12 +67,6 @@ A powerful IntelliJ IDEA plugin that provides a visual interface for **Claude Co
 ## Project Status
 
 The project is under active development with continuous updates. For version history and iteration progress, please read [CHANGELOG.md](CHANGELOG.md)
-
----
-
-## Installation
-
-[IDEA Claude Code GUI Installation](https://plugins.jetbrains.com/plugin/29342-claude-code-gui)
 
 ---
 

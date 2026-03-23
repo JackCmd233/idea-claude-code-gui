@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Claude, OpenAI, Gemini } from '@lobehub/icons';
 import { AVAILABLE_MODELS } from '../types';
 import type { ModelInfo } from '../types';
 import { readClaudeModelMapping } from '../../../utils/claudeModelMapping';
+import { ProviderModelIcon } from '../../shared/ProviderModelIcon';
 
 interface ModelSelectProps {
   value: string;
@@ -57,19 +57,36 @@ const MODEL_ID_TO_MAPPING_KEY: Record<string, string> = {
   'claude-haiku-4-5': 'haiku',
 };
 
-/**
- * Model icon component - displays different icons based on provider type
- */
-const ModelIcon = ({ provider, size = 16 }: { provider?: string; size?: number }) => {
-  switch (provider) {
-    case 'codex':
-      return <OpenAI.Avatar size={size} />;
-    case 'gemini':
-      return <Gemini.Color size={size} />;
-    case 'claude':
-    default:
-      return <Claude.Color size={size} />;
+const resolveMappedModelName = (
+  mappingKey: string | undefined,
+  modelMapping: Record<string, string | undefined>
+): string | undefined => {
+  if (!mappingKey) {
+    return modelMapping.main?.trim() || undefined;
   }
+
+  const mapped = modelMapping[mappingKey]
+    || (mappingKey === 'opus_1m' ? modelMapping.opus : undefined)
+    || modelMapping.main;
+
+  return mapped?.trim() || undefined;
+};
+
+/**
+ * Resolve the display model name for icon matching.
+ * For mapped models, returns the mapped name; otherwise the original ID.
+ */
+const resolveModelIdForIcon = (
+  modelId: string,
+  modelMapping: Record<string, string | undefined>,
+  mappingKeyMap: Record<string, string>
+): string => {
+  const mappingKey = mappingKeyMap[modelId];
+  const mapped = resolveMappedModelName(mappingKey, modelMapping);
+  if (mapped) {
+    return mapped;
+  }
+  return modelId;
 };
 
 /**
@@ -88,13 +105,9 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   const getModelLabel = (model: ModelInfo): string => {
     // Check model mapping first (from local settings.json or provider config)
     const mappingKey = MODEL_ID_TO_MAPPING_KEY[model.id];
-    if (mappingKey) {
-      // opus_1m falls back to opus mapping
-      const mappedName = modelMapping[mappingKey]
-        || (mappingKey === 'opus_1m' ? modelMapping['opus'] : undefined);
-      if (mappedName && mappedName.trim()) {
-        return mappedName.trim();
-      }
+    const mappedName = resolveMappedModelName(mappingKey, modelMapping);
+    if (mappedName) {
+      return mappedName;
     }
 
     // Fall back to default logic when no mapping is found
@@ -173,7 +186,12 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
         onClick={handleToggle}
         title={t('chat.currentModel', { model: getModelLabel(currentModel) })}
       >
-        <ModelIcon provider={currentProvider} size={12} />
+        <ProviderModelIcon
+          providerId={currentProvider}
+          modelId={resolveModelIdForIcon(currentModel.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+          size={12}
+          colored
+        />
         <span className="selector-button-text">{getModelLabel(currentModel)}</span>
         <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
       </button>
@@ -196,7 +214,12 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
               className={`selector-option ${model.id === value ? 'selected' : ''}`}
               onClick={() => handleSelect(model.id)}
             >
-              <ModelIcon provider={currentProvider} size={16} />
+              <ProviderModelIcon
+                providerId={currentProvider}
+                modelId={resolveModelIdForIcon(model.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+                size={16}
+                colored
+              />
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <span>{getModelLabel(model)}</span>
                 {getModelDescription(model) && (

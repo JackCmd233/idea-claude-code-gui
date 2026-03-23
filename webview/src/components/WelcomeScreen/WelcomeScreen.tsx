@@ -7,6 +7,8 @@ import { APP_VERSION } from '../../version/version';
 
 export interface WelcomeScreenProps {
   currentProvider: string;
+  /** Current model ID for vendor-specific icon display */
+  currentModelId?: string;
   t: TFunction;
   onProviderChange: (provider: string) => void;
   onVersionClick?: () => void;
@@ -14,6 +16,7 @@ export interface WelcomeScreenProps {
 
 export const WelcomeScreen = memo(function WelcomeScreen({
   currentProvider,
+  currentModelId,
   t,
   onProviderChange,
   onVersionClick,
@@ -31,7 +34,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({
       }}
     >
       <div style={{ position: 'relative', display: 'inline-block' }}>
-        <BlinkingLogo provider={currentProvider} onProviderChange={onProviderChange} />
+        <BlinkingLogo provider={currentProvider} modelId={currentModelId} onProviderChange={onProviderChange} />
         <span
           className="version-tag"
           role="button"

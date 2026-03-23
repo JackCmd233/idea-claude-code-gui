@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryData, HistorySessionSummary } from '../../types';
 import VirtualList from './VirtualList';
-import { Claude, OpenAI } from '@lobehub/icons';
 import { extractCommandMessageContent } from '../../utils/messageUtils';
 import { sendBridgeEvent } from '../../utils/bridge';
+import { ProviderModelIcon } from '../shared/ProviderModelIcon';
 
 // Deep search timeout (milliseconds)
 const DEEP_SEARCH_TIMEOUT_MS = 30000;
@@ -314,11 +314,7 @@ const HistoryView = ({ historyData, currentProvider, onLoadSession, onDeleteSess
                 }}
                 title={session.provider === 'claude' ? 'Claude' : 'Codex'}
               >
-                {session.provider === 'codex' ? (
-                  <OpenAI.Avatar size={20} />
-                ) : (
-                  <Claude.Color size={20} />
-                )}
+                <ProviderModelIcon providerId={session.provider} size={20} colored />
               </span>
             )}
             {isEditing ? (

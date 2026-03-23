@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, ModelInfo, PermissionMode, ReasoningEffort } from './types';
-import { ConfigSelect, ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
+import { ConfigSelect, ModelSelect, ModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
 import { CLAUDE_MODELS, CODEX_MODELS } from './types';
 import { STORAGE_KEYS, validateCodexCustomModels } from '../../types/provider';
 import type { CodexCustomModel } from '../../types/provider';
@@ -126,7 +126,7 @@ export const ButtonArea = ({
    * Apply model name mapping
    * Maps base model IDs to actual model names (e.g., versions with capacity suffixes)
    */
-  const applyModelMapping = useCallback((model: ModelInfo, mapping: { haiku?: string; sonnet?: string; opus?: string }): ModelInfo => {
+  const applyModelMapping = useCallback((model: ModelInfo, mapping: { main?: string; haiku?: string; sonnet?: string; opus?: string }): ModelInfo => {
     const modelKeyMap: Record<string, keyof typeof mapping> = {
       'claude-sonnet-4-6': 'sonnet',
       'claude-opus-4-6': 'opus',
@@ -134,8 +134,9 @@ export const ButtonArea = ({
     };
 
     const key = modelKeyMap[model.id];
-    if (key && mapping[key]) {
-      const actualModel = String(mapping[key]).trim();
+    const resolvedMapping = (key ? mapping[key] : undefined) || mapping.main;
+    if (resolvedMapping) {
+      const actualModel = String(resolvedMapping).trim();
       if (actualModel.length > 0) {
         // Keep the original id as unique identifier, only modify label to custom name
         // This ensures id remains unique even if multiple models share the same displayName
@@ -243,8 +244,6 @@ export const ButtonArea = ({
       {/* Left side: selectors */}
       <div className="button-area-left">
         <ConfigSelect
-          currentProvider={currentProvider}
-          onProviderChange={handleProviderSelect}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
           streamingEnabled={streamingEnabled}
@@ -252,6 +251,11 @@ export const ButtonArea = ({
           selectedAgent={selectedAgent}
           onAgentSelect={onAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
+        />
+        <ProviderSelect
+          value={currentProvider}
+          onChange={handleProviderSelect}
+          compact
         />
         <ModeSelect value={permissionMode} onChange={handleModeSelect} provider={currentProvider} />
         <ModelSelect value={selectedModel} onChange={handleModelSelect} models={availableModels} currentProvider={currentProvider} onAddModel={onAddModel} />

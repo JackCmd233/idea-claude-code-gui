@@ -1,6 +1,6 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.ClaudeSession.Message;
+import com.github.claudecodegui.session.ClaudeSession.Message;
 import com.github.claudecodegui.handler.SettingsHandler;
 import com.github.claudecodegui.notifications.ClaudeNotifier;
 import com.github.claudecodegui.provider.common.MessageCallback;
@@ -150,6 +150,13 @@ public class ClaudeMessageHandler implements MessageCallback {
         lastReportedError = error;
         textSegmentActive = false;
         thinkingSegmentActive = false;
+
+        // Reset thinking state if still active — same as onComplete() and handleStreamEnd()
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         state.setError(error);
         state.setBusy(false);
         state.setLoading(false);
@@ -177,11 +184,36 @@ public class ClaudeMessageHandler implements MessageCallback {
             lastReportedError = null;
             return;
         }
+
+        // If streaming was active but [STREAM_END] was never received (e.g., SDK error,
+        // timeout, or process interruption), we must explicitly end the stream here.
+        // Without this, the StreamMessageCoalescer remains in streamActive=true state,
+        // which causes SessionCallbackAdapter.onStateChange() to suppress showLoading(false),
+        // leaving the UI stuck in "responding" state forever.
+        // This mirrors the same pattern used in onError() above.
+        boolean wasStreaming = isStreaming;
+        isStreaming = false;
+        textSegmentActive = false;
+        thinkingSegmentActive = false;
+
+        // Reset thinking state if still active
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         errorReportedThisTurn = false;
         lastReportedError = null;
         state.setBusy(false);
         state.setLoading(false);
         state.updateLastModifiedTime();
+
+        if (wasStreaming) {
+            LOG.warn("onComplete called without prior stream_end — forcing stream cleanup");
+            callbackHandler.notifyMessageUpdate(state.getMessages());
+            callbackHandler.notifyStreamEnd();
+        }
+
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
     }
 
@@ -260,10 +292,19 @@ public class ClaudeMessageHandler implements MessageCallback {
                 LOG.debug("Streaming active, skipping full message update in handleAssistantMessage");
             }
 
-            // Update status bar with usage from the assistant message.
-            // In streaming mode, usage is primarily updated via handleUsage() from [USAGE] tags,
-            // so skip here to avoid duplicate updates. In non-streaming mode, this is the primary path.
-            if (!isStreaming && mergedRaw.has("message") && mergedRaw.get("message").isJsonObject()) {
+            // Update status bar with usage from the final assistant message (matches CLI's PP1 behavior).
+            // This ensures the displayed value matches what resume shows from JSONL history.
+            // The assistant message's usage field is the authoritative final value.
+            //
+            // IMPORTANT: This update MUST happen in BOTH streaming and non-streaming modes:
+            // - In streaming mode: [USAGE] tags provide intermediate updates for real-time feedback,
+            //   but the assistant message's usage is the authoritative final value that must overwrite
+            //   any intermediate values to ensure consistency with JSONL history and CLI behavior.
+            // - In non-streaming mode: This is the primary path to update token usage.
+            //
+            // DO NOT add !isStreaming check here - it was previously introduced in commit 03640408
+            // and caused incorrect token display in streaming mode (see commit history for details).
+            if (mergedRaw.has("message") && mergedRaw.get("message").isJsonObject()) {
                 JsonObject messageObj = mergedRaw.getAsJsonObject("message");
                 if (messageObj.has("usage") && messageObj.get("usage").isJsonObject()) {
                     JsonObject usage = messageObj.getAsJsonObject("usage");
@@ -271,7 +312,7 @@ public class ClaudeMessageHandler implements MessageCallback {
                     int maxTokens = SettingsHandler.getModelContextLimit(state.getModel());
                     ClaudeNotifier.setTokenUsage(project, usedTokens, maxTokens);
                     callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
-                    LOG.debug("Updated token usage from assistant message (non-streaming): " + usedTokens);
+                    LOG.debug("Updated token usage from assistant message: " + usedTokens);
                 }
             }
         } catch (Exception e) {
@@ -575,6 +616,16 @@ public class ClaudeMessageHandler implements MessageCallback {
         streamEndedThisTurn = true;
         textSegmentActive = false;
         thinkingSegmentActive = false;
+
+        // Reset thinking state — stream end is the definitive boundary for a turn.
+        // If thinking was active when the stream ended (e.g., extended thinking without
+        // subsequent content), it must be cleared here to prevent the frontend from being
+        // stuck in "thinking" state.
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         // After streaming ends, send a final message update to ensure the message list is in sync
         callbackHandler.notifyMessageUpdate(state.getMessages());
         callbackHandler.notifyStreamEnd();
@@ -697,8 +748,14 @@ public class ClaudeMessageHandler implements MessageCallback {
 
     /**
      * Backfill usage data into the current assistant message's raw JSON.
-     * Uses monotonic increase check to prevent overwriting a larger value with a smaller one
-     * (e.g., due to out-of-order message delivery).
+     * Always updates during streaming to capture accumulating usage data.
+     *
+     * IMPORTANT: This method does NOT perform monotonic increase checks.
+     * - The assistant message's final usage value (from handleAssistantMessage) is the authoritative
+     *   value that will overwrite any intermediate values from [USAGE] tags.
+     * - Monotonic checks were previously added in commit 03640408 but removed because they prevented
+     *   the authoritative final value from being applied when messages arrive out of order.
+     * - Allowing overwrites ensures consistency with JSONL history and CLI behavior.
      */
     private void backfillUsageToAssistantMessage(JsonObject usageJson) {
         if (currentAssistantMessage == null || currentAssistantMessage.raw == null) return;
@@ -706,17 +763,9 @@ public class ClaudeMessageHandler implements MessageCallback {
                 ? currentAssistantMessage.raw.getAsJsonObject("message") : null;
         if (message == null) return;
 
-        // Monotonic increase check: only update if new total >= existing total
-        int newTotal = TokenUsageUtils.extractUsedTokens(usageJson, state.getProvider());
-        if (message.has("usage") && message.get("usage").isJsonObject()) {
-            int existingTotal = TokenUsageUtils.extractUsedTokens(message.getAsJsonObject("usage"), state.getProvider());
-            if (newTotal < existingTotal) {
-                LOG.debug("Skipping usage backfill: new total " + newTotal + " < existing " + existingTotal);
-                return;
-            }
-        }
+        // Always update usage during streaming to capture accumulating values
         message.add("usage", usageJson);
-        LOG.debug("Updated assistant message usage from [USAGE] tag: " + newTotal);
+        LOG.debug("Updated assistant message usage from [USAGE] tag");
     }
 
     private void applyThinkingDeltaToRaw(String delta) {

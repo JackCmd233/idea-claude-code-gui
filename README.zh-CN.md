@@ -1,6 +1,8 @@
 <div align="center">
 
-# CC GUI (原 Claude Code GUI)
+# CC GUI（Claude or Codex）
+
+> 原名：Claude Code GUI
 
 <img width="120" alt="Image" src="./docs/images/idea-claude-code-gui-logo.png" />
 
@@ -17,6 +19,12 @@
 一个功能强大的 IntelliJ IDEA 插件，为开发者提供 **Claude Code** 和 **OpenAI Codex** 双 AI 工具的可视化操作界面，让 AI 辅助编程变得更加高效和直观。
 
 <img width="850" alt="Image" src="/docs/img/banner.png" />
+
+---
+
+## 插件下载
+
+[IDEA Claude Code GUI 下载](https://plugins.jetbrains.com/plugin/30666-cc-gui)
 
 ---
 
@@ -58,12 +66,6 @@
 ## 项目状态
 
 项目处于活跃开发阶段，代码持续更新中。版本历史和迭代进度请阅读 [CHANGELOG.md](CHANGELOG.md)
-
----
-
-## 插件下载
-
-[IDEA Claude Code GUI 下载](https://plugins.jetbrains.com/plugin/29342-claude-code-gui)
 
 ---
 

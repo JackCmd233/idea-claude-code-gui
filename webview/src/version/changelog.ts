@@ -13,6 +13,90 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: '0.3.1',
+    date: '2026-03-23',
+    content: {
+      en: `✨ Features
+- Add CLI Login provider: delegate auth to Claude SDK's native OAuth flow, with account info display and authorize/revoke dialogs; update i18n across 9 languages
+- Add provider deactivation support: deactivateClaudeProvider() sets current provider to empty, add confirmation dialogs for switching to/from local provider, simplify settings UI
+- Add Korean language support #KimTibber
+
+🐛 Fixes
+- Fix UI stuck in responding/thinking state: resolve race conditions in DaemonBridge, ClaudeMessageHandler, StreamMessageCoalescer, and streamingCallbacks.ts
+- Fix race condition where last streaming assistant message is lost: move ref cleanup into setMessages updater, add fallback recovery path #gadfly3173
+- Fix JCEF WebView incorrect cursor types on macOS: add CefDisplayHandler to map Chromium cursors to Swing (#753) #yogendrasinghx
+- Fix Codex history initial load returning fewer sessions than refresh: replace root-dir timestamp check with file-count comparison #gadfly3173
+- Fix MSYS2/Git Bash path conversion: handle ~, /home/<user>, /tmp, /dev/null mappings; consolidate temp dir resolution into PlatformUtils.getTempDirectory() #gadfly3173
+- Fix node path validation regression: reject invalid saved node paths and keep bridge state in sync #gadfly3173
+- Fix plugin installation and UI interaction reliability: versioned plugin dirs, thinking block state, enqueue dialog requests #hpstream
+- Rename "Auto Open File" to "Send Opened File Path" across all 8 locales (#693) #gadfly3173
+
+🔧 Improvements
+- Large-scale refactoring: ClaudeSDKBridge (1600+ lines) → 12 classes, DiffHandler → 7 modules, ClaudeSession → 5 modules, SlashCommandRegistry → 6 classes, CodexHistoryReader → 4 modules, PersistentQueryService and ChatInputBox split into focused modules
+- Reorganize Java package structure by domain (action, ui, handler subpackages)
+- Normalize model resolution: keep canonical model ID in Java, add env config normalization helpers with tests
+- Extract CursorHandler and throttle mousemove with requestAnimationFrame
+- Translate Chinese comments and JSDoc to English across 14 files
+- Rename plugin ID and project name to idea-claude-code-gui`,
+      zh: `✨ Features
+- 新增 CLI Login Provider：通过 Claude SDK 原生 OAuth 认证，ProviderList 显示账户信息及授权/撤销对话框，更新 9 种语言 i18n
+- 新增 Provider 停用支持：切换本地 Provider 时显示确认对话框，将 Provider 信息集成至 ProviderList 简化设置界面
+- 新增韩语支持 #KimTibber
+
+🐛 Fixes
+- 修复 UI 卡在"响应中/思考中"状态：修复 DaemonBridge、ClaudeMessageHandler、StreamMessageCoalescer 及 streamingCallbacks.ts 多处竞态
+- 修复流结束时最后一条助手消息丢失的竞态问题 #gadfly3173
+- 修复 JCEF WebView 在 macOS 上光标类型不正确 (#753) #yogendrasinghx
+- 修复 Codex 历史记录首次加载比刷新少会话 #gadfly3173
+- 修复 MSYS2/Git Bash 路径转换：处理 ~、/tmp、/dev/null 等映射 #gadfly3173
+- 修复 Node 路径验证回归：拒绝保存无效路径 #gadfly3173
+- 修复插件安装和 UI 交互可靠性：支持带版本号插件目录、对话框请求入队 #hpstream
+- 将"Auto Open File"重命名为"Send Opened File Path"，8 种语言全部更新 (#693) #gadfly3173
+
+🔧 Improvements
+- 大规模后端重构：ClaudeSDKBridge（1600+行）→ 12 个类，DiffHandler → 7 个模块，ClaudeSession → 5 个模块，SlashCommandRegistry → 6 个类，CodexHistoryReader → 4 个模块
+- 按领域重组 Java 包结构（action、ui、handler 子包）
+- 规范化模型解析和环境变量配置，新增辅助函数和单元测试
+- 提取 CursorHandler，使用 requestAnimationFrame 节流 mousemove 监听
+- 将 14 个文件中文注释和 JSDoc 统一翻译为英文
+- 重命名插件 ID 和项目名称为 idea-claude-code-gui`,
+    },
+  },
+  {
+    version: '0.3',
+    date: '2026-03-16',
+    content: {
+      en: `✨ Features
+- Add file context placeholder with enable confirmation popover in ContextBar: show a dashed placeholder when autoOpenFile is disabled, with i18n support for 8 locales
+- Replace raw error with friendly provider-not-configured card: amber-toned warning with "Go to Provider Settings" button for first-run experience
+
+🐛 Fixes
+- Fix active sessions interrupted when request exceeds 30 minutes: add turn tracking and 6-hour runtime lifetime cap (#672) #JackCmd233
+- Fix token usage tracking in streaming multi-turn conversations: properly accumulate usage across turns (#686)
+- Fix CRLF/LF line ending mismatch in diff review on Windows (#687) #gadfly3173
+- Fix session title data loss from race conditions: atomic write and ReentrantLock for concurrent operations
+- Fix Codex session transition guard blocking history restore
+
+🔧 Improvements
+- Extract shared ProviderModelIcon component supporting 19 model vendors with pattern-based icon resolution
+- Extract line-ending normalization helper to eliminate duplicated CRLF/LF conversion logic`,
+      zh: `✨ Features
+- 上下文栏新增文件上下文占位符及启用确认弹窗：autoOpenFile 关闭时显示虚线占位按钮，支持 8 种语言国际化
+- 未配置 Provider 时显示友好提示卡片：琥珀色警告卡片替代红色错误，优化首次使用体验
+
+🐛 Fixes
+- 修复单次请求超过 30 分钟时打断正在运行的会话：添加 turn 跟踪及 6 小时运行时生命周期上限 (#672) #JackCmd233
+- 修复流式多轮对话中 Token 用量统计错误：正确累积各 turn 用量 (#686)
+- 修复 Windows 上 Diff Review 因换行符不匹配无法打开 (#687) #gadfly3173
+- 修复会话标题因竞态条件丢失：原子写入 + ReentrantLock 序列化并发操作
+- 修复 Codex 会话恢复时 transition guard 阻塞历史消息
+
+🔧 Improvements
+- 提取共享 ProviderModelIcon 组件，支持 19 家模型厂商 pattern 图标解析
+- 提取换行符规范化辅助函数，消除重复 CRLF/LF 转换逻辑`,
+    },
+  },
+  {
     version: '0.2.9',
     date: '2026-03-15',
     content: {

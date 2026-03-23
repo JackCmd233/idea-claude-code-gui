@@ -480,6 +480,7 @@ const App = () => {
               {messages.length === 0 && (
                 <WelcomeScreen
                   currentProvider={currentProvider}
+                  currentModelId={selectedModel}
                   t={t}
                   onProviderChange={wrappedHandleProviderSelect}
                   onVersionClick={() => setShowChangelogDialog(true)}
@@ -500,6 +501,10 @@ const App = () => {
                 messagesEndRef={messagesEndRef}
                 onMessageNodeRef={handleMessageNodeRef}
                 onCollapsedCountChange={setAnchorCollapsedCount}
+                onNavigateToProviderSettings={() => {
+                  setSettingsInitialTab('providers');
+                  setCurrentView('settings');
+                }}
               />
             </div>
           </div>
@@ -592,6 +597,8 @@ const App = () => {
               addToast={addToast}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
+              autoOpenFileEnabled={autoOpenFileEnabled}
+              onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
             />
           </div>
         </>

@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Switch } from 'antd';
-import { Claude, OpenAI, Gemini } from '@lobehub/icons';
-import { AVAILABLE_PROVIDERS } from '../types';
 import { agentProvider, CREATE_NEW_AGENT_ID, EMPTY_STATE_ID, type AgentItem } from '../providers/agentProvider';
 import type { SelectedAgent } from '../types';
 
 interface ConfigSelectProps {
-  currentProvider: string;
-  onProviderChange: (providerId: string) => void;
   alwaysThinkingEnabled?: boolean;
   onToggleThinking?: (enabled: boolean) => void;
   streamingEnabled?: boolean;
@@ -20,28 +15,10 @@ interface ConfigSelectProps {
 }
 
 /**
- * Provider Icon Component
- */
-const ProviderIcon = ({ providerId, size = 16, colored = false }: { providerId: string; size?: number; colored?: boolean }) => {
-  switch (providerId) {
-    case 'claude':
-      return colored ? <Claude.Color size={size} /> : <Claude size={size} />;
-    case 'codex':
-      return <OpenAI.Avatar size={size} />;
-    case 'gemini':
-      return colored ? <Gemini.Color size={size} /> : <Gemini.Avatar size={size} />;
-    default:
-      return colored ? <Claude.Color size={size} /> : <Claude size={size} />;
-  }
-};
-
-/**
- * ConfigSelect - Combined Configuration Selector
- * Contains CLI Tool Selection and Thinking Switch
+ * ConfigSelect - Configuration menu (Agent, Streaming, Thinking)
+ * Provider selection has been moved to a standalone ProviderSelect icon button.
  */
 export const ConfigSelect = ({
-  currentProvider: providerId,
-  onProviderChange,
   alwaysThinkingEnabled,
   onToggleThinking,
   streamingEnabled,
@@ -52,25 +29,13 @@ export const ConfigSelect = ({
 }: ConfigSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState<'none' | 'provider' | 'agent'>('none');
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const [activeSubmenu, setActiveSubmenu] = useState<'none' | 'agent'>('none');
   const [agentItems, setAgentItems] = useState<AgentItem[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
-  
+
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const agentAbortControllerRef = useRef<AbortController | null>(null);
-
-  const currentProviderInfo = AVAILABLE_PROVIDERS.find(p => p.id === providerId) || AVAILABLE_PROVIDERS[0];
-
-  const showToastMessage = useCallback((message: string) => {
-    setToastMessage(message);
-    setShowToast(true);
-    setTimeout(() => {
-      setShowToast(false);
-    }, 1500);
-  }, []);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -79,20 +44,6 @@ export const ConfigSelect = ({
       setActiveSubmenu('none');
     }
   }, [isOpen]);
-
-  const handleProviderSelect = useCallback((pId: string) => {
-    const provider = AVAILABLE_PROVIDERS.find(p => p.id === pId);
-    if (!provider) return;
-
-    if (!provider.enabled) {
-      showToastMessage(t('settings.provider.featureComingSoon'));
-      return;
-    }
-
-    onProviderChange(pId);
-    setIsOpen(false);
-    setActiveSubmenu('none');
-  }, [onProviderChange, showToastMessage, t]);
 
   const loadAgents = useCallback(async () => {
     if (agentAbortControllerRef.current) {
@@ -162,37 +113,6 @@ export const ConfigSelect = ({
       }
     };
   }, []);
-
-  const renderProviderSubmenu = () => (
-    <div
-      className="selector-dropdown"
-      style={{
-        position: 'absolute',
-        left: '100%',
-        bottom: 0,
-        marginLeft: '-30px',
-        zIndex: 10001,
-        minWidth: '180px'
-      }}
-    >
-      {AVAILABLE_PROVIDERS.map((provider) => (
-        <div
-          key={provider.id}
-          className={`selector-option ${provider.id === providerId ? 'selected' : ''} ${!provider.enabled ? 'disabled' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleProviderSelect(provider.id);
-          }}
-        >
-          <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ProviderIcon providerId={provider.id} size={14} colored={true} />
-          </div>
-          <span>{provider.label}</span>
-          {provider.id === providerId && <span className="codicon codicon-check check-mark" />}
-        </div>
-      ))}
-    </div>
-  );
 
   const renderAgentSubmenu = () => (
     <div
@@ -292,40 +212,7 @@ export const ConfigSelect = ({
             minWidth: '200px'
           }}
         >
-          {/* CLI Tool Item */}
-          <div 
-            className="selector-option" 
-            onMouseEnter={() => setActiveSubmenu('provider')}
-            onMouseLeave={() => setActiveSubmenu('none')}
-            style={{ position: 'relative' }}
-          >
-            <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ProviderIcon providerId={currentProviderInfo.id} size={14} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <span>{currentProviderInfo.label}</span>
-            </div>
-            <div 
-              style={{ 
-                marginLeft: 'auto',
-                display: 'flex',
-                alignItems: 'center',
-                alignSelf: 'stretch',
-                paddingLeft: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              <span className="codicon codicon-chevron-right" style={{ fontSize: '12px' }} />
-            </div>
-            
-            {activeSubmenu === 'provider' && renderProviderSubmenu()}
-          </div>
-
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'var(--dropdown-border)', margin: '4px 0', opacity: 0.5 }} />
-
-          {/* Agent Item (Disabled) */}
+          {/* Agent Item */}
           <div
             className="selector-option"
             onMouseEnter={() => setActiveSubmenu('agent')}
@@ -341,8 +228,8 @@ export const ConfigSelect = ({
                 </span>
               ) : null}
             </div>
-            <div 
-              style={{ 
+            <div
+              style={{
                 marginLeft: 'auto',
                 display: 'flex',
                 alignItems: 'center',
@@ -411,13 +298,6 @@ export const ConfigSelect = ({
             />
           </div>
         </div>
-      )}
-
-      {showToast && createPortal(
-        <div className="selector-toast" style={{ zIndex: 20000 }}>
-          {toastMessage}
-        </div>,
-        document.body
       )}
     </div>
   );
