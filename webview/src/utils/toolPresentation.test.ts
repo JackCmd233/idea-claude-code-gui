@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getToolLineInfo, resolveToolTarget, summarizeToolCommand } from './toolPresentation';
+import type { ToolResultBlock } from '../types';
+import { getToolEditCount, getToolLineInfo, resolveToolTarget, summarizeToolCommand } from './toolPresentation';
 
 describe('toolPresentation', () => {
   it('relativizes display path to workdir and strips line suffix for open path', () => {
@@ -38,6 +39,24 @@ describe('toolPresentation', () => {
     const summary = summarizeToolCommand("/bin/bash -lc 'set -o pipefail\ncargo test\n--all-features --quiet'");
 
     expect(summary).toBe('set -o pipefail ...');
+  });
+
+  it('falls back to unified diff hunk line info from tool result text', () => {
+    const result: ToolResultBlock = {
+      type: 'tool_result',
+      content: `@@ -19,2 +19,2 @@\n-old line\n+new line`,
+    };
+
+    expect(getToolLineInfo({ file_path: 'text.md' }, undefined, result)).toEqual({ start: 19, end: 20 });
+  });
+
+  it('supports insertion-only hunks from tool result text', () => {
+    const result: ToolResultBlock = {
+      type: 'tool_result',
+      content: `@@ -0,0 +7,3 @@\n+alpha\n+beta\n+gamma`,
+    };
+
+    expect(getToolLineInfo({ file_path: 'text.md' }, undefined, result)).toEqual({ start: 7, end: 9 });
   });
 
   it('keeps standard edit-file paths clickable without line suffixes', () => {

@@ -27,6 +27,7 @@ import {
 import type { ContextInfo, ViewMode } from './hooks';
 import { formatTime } from './utils/helpers';
 import { extractMarkdownContent } from './utils/copyUtils';
+import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { StatusPanel, StatusPanelErrorBoundary } from './components/StatusPanel';
 import { ToastContainer, type ToastMessage } from './components/Toast';
@@ -116,6 +117,12 @@ const App = () => {
   // ── Theme & context actions ──
   useThemeInit();
   useContextActions();
+
+  // Apply diff theme on app startup so diff styles work before opening Settings.
+  useEffect(() => {
+    const ideTheme = window.__INITIAL_IDE_THEME__ ?? null;
+    applyDiffTheme(getStoredDiffTheme(), ideTheme);
+  }, []);
 
   // ── Scroll behavior ──
   const {

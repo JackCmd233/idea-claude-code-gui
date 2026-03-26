@@ -253,8 +253,13 @@ function emitSyntheticPatchOperations(state, patchBatches, isError, deniedCallId
       const toolName = op.toolName === 'write' ? 'write' : 'edit';
       if (!state.emittedToolUseIds.has(toolUseId)) {
         state.emitMessage(toolUseMsg(toolUseId, toolName, {
-          file_path: op.filePath, old_string: op.oldString, new_string: op.newString,
-          replace_all: false, source: 'codex_session_patch'
+          file_path: op.filePath,
+          old_string: op.oldString,
+          new_string: op.newString,
+          start_line: op.startLine,
+          end_line: op.endLine,
+          replace_all: false,
+          source: 'codex_session_patch'
         }));
         state.emittedToolUseIds.add(toolUseId);
       }

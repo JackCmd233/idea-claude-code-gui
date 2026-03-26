@@ -1,4 +1,4 @@
-import type { ToolInput } from '../types';
+import type { ToolInput, ToolResultBlock } from '../types';
 import { getFileName, truncate } from './helpers';
 import { extractFilePathFromCommand, isCommandToolName, unwrapShellCommand } from './toolCommandPath';
 import { normalizeToolInput } from './toolInputNormalization';
@@ -37,6 +37,49 @@ const parseNumber = (value: unknown): number | undefined => {
     return Number(value);
   }
   return undefined;
+};
+
+const extractToolResultText = (result?: ToolResultBlock | null): string | undefined => {
+  if (!result) {
+    return undefined;
+  }
+
+  if (typeof result.content === 'string') {
+    return result.content;
+  }
+
+  if (Array.isArray(result.content)) {
+    const text = result.content
+      .map((item) => (item && typeof item.text === 'string' ? item.text : ''))
+      .filter(Boolean)
+      .join('\n');
+    return text || undefined;
+  }
+
+  return undefined;
+};
+
+const parseUnifiedDiffFirstHunk = (text?: string): { start?: number; end?: number } => {
+  if (!text) {
+    return {};
+  }
+
+  const match = text.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@/m);
+  if (!match) {
+    return {};
+  }
+
+  const oldStart = Number(match[1]);
+  const oldCount = match[2] ? Number(match[2]) : 1;
+  const newStart = Number(match[3]);
+  const newCount = match[4] ? Number(match[4]) : 1;
+  const start = oldCount > 0 ? oldStart : newStart;
+  const effectiveCount = oldCount > 0 ? oldCount : newCount;
+
+  return {
+    start,
+    end: effectiveCount > 1 ? start + effectiveCount - 1 : undefined,
+  };
 };
 
 const relativizeDisplayPath = (filePath: string, workdir?: string): string => {
@@ -180,7 +223,11 @@ export const resolveToolTarget = (input: ToolInput, name?: string): ToolTargetIn
   };
 };
 
-export const getToolLineInfo = (input: ToolInput, target?: ToolTargetInfo): { start?: number; end?: number } => {
+export const getToolLineInfo = (
+  input: ToolInput,
+  target?: ToolTargetInfo,
+  result?: ToolResultBlock | null,
+): { start?: number; end?: number } => {
   const offset = parseNumber(input.offset);
   const limit = parseNumber(input.limit);
   if (offset !== undefined && limit !== undefined) {
@@ -202,10 +249,23 @@ export const getToolLineInfo = (input: ToolInput, target?: ToolTargetInfo): { st
     return { start: startLine, end: endLine };
   }
 
+  const resultLineInfo = parseUnifiedDiffFirstHunk(extractToolResultText(result));
+  if (resultLineInfo.start !== undefined) {
+    return resultLineInfo;
+  }
+
   return {
     start: target?.lineStart,
     end: target?.lineEnd,
   };
+};
+
+export const getToolEditCount = (input: ToolInput): number => {
+  const edits = input.edits;
+  if (!Array.isArray(edits)) {
+    return 0;
+  }
+  return edits.filter((item) => item && typeof item === 'object').length;
 };
 
 export const summarizeToolCommand = (command?: string): string | undefined => {

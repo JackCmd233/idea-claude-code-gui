@@ -4,6 +4,7 @@ import type { FileChangeSummary, EditOperation, FileChangeStatus } from '../type
 import { getFileName } from '../utils/helpers';
 import { FILE_MODIFY_TOOL_NAMES, isToolName, normalizeToolName } from '../utils/toolConstants';
 import { normalizeToolInput } from '../utils/toolInputNormalization';
+import { getToolLineInfo } from '../utils/toolPresentation';
 
 /** Write tool names that indicate a new file */
 const WRITE_TOOL_NAMES = new Set(['write', 'write_file', 'create_file']);
@@ -239,6 +240,7 @@ export function useFileChanges({
 
         const { oldString, newString, replaceAll } = extractStrings(input);
         const { additions, deletions } = computeDiffStats(oldString, newString);
+        const lineInfo = getToolLineInfo(input, undefined, result);
 
         const operation: EditOperation = {
           toolName,
@@ -247,6 +249,8 @@ export function useFileChanges({
           additions,
           deletions,
           replaceAll,
+          lineStart: lineInfo.start,
+          lineEnd: lineInfo.end,
         };
 
         // Group by file path
@@ -268,12 +272,16 @@ export function useFileChanges({
       const rawStatus = determineFileStatus(operations);
       const status: FileChangeStatus = rawStatus === 'A' ? 'A' : 'M';
 
+      const firstLineOperation = operations.find((op) => typeof op.lineStart === 'number');
+
       summaries.push({
         filePath: String(filePath || ''),
         fileName: String(getFileName(filePath) || filePath || 'unknown'),
         status,
         additions: totalAdditions,
         deletions: totalDeletions,
+        lineStart: firstLineOperation?.lineStart,
+        lineEnd: firstLineOperation?.lineEnd,
         operations,
       });
     });
