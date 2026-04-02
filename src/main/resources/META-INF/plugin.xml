@@ -86,13 +86,21 @@
             <keyboard-shortcut keymap="macOS" first-keystroke="meta alt K"/>
         </action>
 
+        <action id="ClaudeCodeGUI.CopySelectedReferenceAction"
+                class="com.github.claudecodegui.CopySelectedReferenceAction"
+                icon="/icons/copy-reference.svg">
+            <add-to-group group-id="EditorPopupMenu"
+                          anchor="after"
+                          relative-to-action="ClaudeCodeGUI.SendSelectionToTerminalAction"/>
+        </action>
+
         <!-- Quick Fix with Claude Action -->
         <action id="ClaudeCodeGUI.QuickFixWithClaudeAction"
                 class="com.github.claudecodegui.QuickFixWithClaudeAction"
                 icon="/icons/quick-fix.svg">
             <add-to-group group-id="EditorPopupMenu"
                            anchor="after"
-                           relative-to-action="ClaudeCodeGUI.SendSelectionToTerminalAction"/>
+                           relative-to-action="ClaudeCodeGUI.CopySelectedReferenceAction"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift Q"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift Q"/>
             <keyboard-shortcut keymap="macOS" first-keystroke="meta shift Q"/>

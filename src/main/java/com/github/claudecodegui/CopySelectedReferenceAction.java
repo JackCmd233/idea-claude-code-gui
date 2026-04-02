@@ -2,7 +2,7 @@ package com.github.claudecodegui;
 
 import com.github.claudecodegui.notifications.ClaudeNotifier;
 import com.github.claudecodegui.util.SelectionReferenceUtils;
-import com.github.claudecodegui.util.SelectionTextUtils;
+import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -17,19 +17,19 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.awt.datatransfer.StringSelection;
+
 /**
- * Action that sends selected code to the plugin chat window.
- * Supports cross-platform shortcuts: Mac (Cmd+Option+K) and Windows/Linux (Ctrl+Alt+K).
- * Implements DumbAware to allow usage during index building.
+ * Copies the current editor selection reference to the system clipboard.
  */
-public class SendSelectionToTerminalAction extends AnAction implements DumbAware {
+public class CopySelectedReferenceAction extends AnAction implements DumbAware {
 
-    private static final Logger LOG = Logger.getInstance(SendSelectionToTerminalAction.class);
+    private static final Logger LOG = Logger.getInstance(CopySelectedReferenceAction.class);
 
-    public SendSelectionToTerminalAction() {
+    public CopySelectedReferenceAction() {
         super(
-            ClaudeCodeGuiBundle.message("action.sendToGui.text"),
-            ClaudeCodeGuiBundle.message("action.sendToGui.description"),
+            ClaudeCodeGuiBundle.message("action.copySelectedReference.text"),
+            ClaudeCodeGuiBundle.message("action.copySelectedReference.description"),
             null
         );
     }
@@ -51,15 +51,15 @@ public class SendSelectionToTerminalAction extends AnAction implements DumbAware
                 .nonBlocking(() -> SelectionReferenceUtils.getSelectionReferenceFromEvent(e))
                 .finishOnUiThread(ModalityState.defaultModalityState(), reference -> {
                     if (reference == null) {
+                        ClaudeNotifier.showWarning(project, ClaudeCodeGuiBundle.message("send.selectCodeFirst"));
                         return;
                     }
-                    SelectionTextUtils.sendToChatWindow(project, reference, "editor");
-                    LOG.info("Added to pending send: " + reference);
+                    copyToClipboard(project, reference);
                 })
                 .submit(AppExecutorUtil.getAppExecutorService());
         } catch (Exception ex) {
-            ClaudeNotifier.showError(project, ClaudeCodeGuiBundle.message("send.failed", ex.getMessage()));
-            LOG.error("Error: " + ex.getMessage(), ex);
+            ClaudeNotifier.showError(project, ClaudeCodeGuiBundle.message("copyReference.failed", ex.getMessage()));
+            LOG.error("Failed to copy selected reference", ex);
         }
     }
 
@@ -76,5 +76,15 @@ public class SendSelectionToTerminalAction extends AnAction implements DumbAware
         String selectedText = selectionModel.getSelectedText();
         e.getPresentation().setEnabledAndVisible(selectedText != null && !selectedText.isEmpty());
     }
-}
 
+    private void copyToClipboard(@NotNull Project project, @NotNull String reference) {
+        try {
+            CopyPasteManager.getInstance().setContents(new StringSelection(reference));
+            ClaudeNotifier.showSuccess(project, ClaudeCodeGuiBundle.message("copyReference.success"));
+            LOG.info("Copied selected reference: " + reference);
+        } catch (Exception ex) {
+            ClaudeNotifier.showError(project, ClaudeCodeGuiBundle.message("copyReference.failed", ex.getMessage()));
+            LOG.error("Failed to copy reference to clipboard", ex);
+        }
+    }
+}
