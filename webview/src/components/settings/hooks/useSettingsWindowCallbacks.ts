@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import type { ProviderConfig, CodexProviderConfig } from '../../../types/provider';
 import type { AgentConfig } from '../../../types/agent';
 import type { PromptConfig } from '../../../types/prompt';
-import type { ClaudeConfig } from '../ConfigInfoDisplay';
 import type { AlertType } from '../../AlertDialog';
 import type { ToastMessage } from '../../Toast';
 
@@ -16,8 +15,6 @@ const sendToJava = (message: string) => {
 
 export interface SettingsWindowCallbacksDeps {
   // State setters
-  setClaudeConfig: (config: ClaudeConfig | null) => void;
-  setClaudeConfigLoading: (loading: boolean) => void;
   setNodePath: (path: string) => void;
   setNodeVersion: (version: string | null) => void;
   setMinNodeVersion: (version: number) => void;
@@ -34,6 +31,9 @@ export interface SettingsWindowCallbacksDeps {
   setLoading: (loading: boolean) => void;
   setCodexLoading: (loading: boolean) => void;
   setCodexConfigLoading: (loading: boolean) => void;
+  // AI feature toggle setters
+  setCommitGenerationEnabled?: (enabled: boolean) => void;
+  setStatusBarWidgetEnabled?: (enabled: boolean) => void;
   // Sound notification setters
   setSoundNotificationEnabled?: (enabled: boolean) => void;
   setSoundOnlyWhenUnfocused?: (enabled: boolean) => void;
@@ -105,18 +105,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         }
       } catch (error) {
         console.error('[SettingsView] Failed to parse active provider:', error);
-      }
-    };
-
-    // Claude CLI configuration callback
-    window.updateCurrentClaudeConfig = (jsonStr: string) => {
-      try {
-        const config: ClaudeConfig = JSON.parse(jsonStr);
-        d().setClaudeConfig(config);
-        d().setClaudeConfigLoading(false);
-      } catch (error) {
-        console.error('[SettingsView] Failed to parse claude config:', error);
-        d().setClaudeConfigLoading(false);
       }
     };
 
@@ -244,6 +232,26 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         console.error('[SettingsView] Failed to parse commit prompt:', error);
         d().setSavingCommitPrompt(false);
         d().addToast(t('toast.saveFailed'), 'error');
+      }
+    };
+
+    // AI commit generation config callback
+    window.updateCommitGenerationEnabled = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        d().setCommitGenerationEnabled?.(data.commitGenerationEnabled ?? true);
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse commit generation config:', error);
+      }
+    };
+
+    // Status bar widget config callback
+    window.updateStatusBarWidgetEnabled = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        d().setStatusBarWidgetEnabled?.(data.statusBarWidgetEnabled ?? true);
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse status bar widget config:', error);
       }
     };
 
@@ -392,8 +400,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     d().loadAgents();
     // Note: loadPrompts is now handled by PromptSection component
     d().loadPrompts?.();
-    d().setClaudeConfigLoading(true);
-    sendToJava('get_current_claude_config:');
     sendToJava('get_node_path:');
     sendToJava('get_working_directory:');
     sendToJava('get_editor_font_config:');
@@ -401,6 +407,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     sendToJava('get_codex_sandbox_mode:');
     sendToJava('get_commit_prompt:');
     sendToJava('get_sound_notification_config:');
+    sendToJava('get_commit_generation_enabled:');
+    sendToJava('get_status_bar_widget_enabled:');
 
     return () => {
       d().cleanupAgentsTimeout();
@@ -408,7 +416,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
       window.updateProviders = undefined;
       window.updateActiveProvider = undefined;
-      window.updateCurrentClaudeConfig = undefined;
       window.showError = undefined;
       window.showSwitchSuccess = undefined;
       window.updateNodePath = undefined;
@@ -426,6 +433,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       }
       window.updateCommitPrompt = undefined;
       window.updateSoundNotificationConfig = undefined;
+      window.updateCommitGenerationEnabled = undefined;
+      window.updateStatusBarWidgetEnabled = undefined;
       window.updateAgents = previousUpdateAgents;
       window.agentOperationResult = undefined;
       window.agentImportPreviewResult = undefined;

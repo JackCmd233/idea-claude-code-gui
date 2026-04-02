@@ -118,7 +118,8 @@
         "spanish": "Español",
         "french": "Français",
         "japanese": "日本語",
-        "russian": "Русский"
+        "russian": "Русский",
+        "korean": "한국어"
       },
       "nodePath": {
         "label": "Node.jsパス",
@@ -153,7 +154,7 @@
         "hint": "When enabled, AI responses will appear character by character in real-time, instead of waiting for the complete response. May consume more resources."
       },
       "autoOpenFile": {
-        "label": "ファイル自動オープン",
+        "label": "開いたファイルパスを送信",
         "enabled": "有効",
         "disabled": "無効",
         "hint": "有効にすると、プロジェクトツリーでファイルを選択した際に自動的にファイルパスを AI に送信します（注意：ファイルパスのみ送信され、ファイル内容は送信されません）。無効時は手動操作が必要です。"
@@ -359,6 +360,16 @@
       "localProviderName": "Local settings.json",
       "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
       "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
+      "authorizeAndEnable": "承認して有効化",
+      "revokeAuthorization": "承認を取り消す",
+      "cliLoginProviderName": "CLIログイン状態",
+      "cliLoginProviderDescription": "ターミナルで完了した既存のClaude CLIログイン状態を再利用します",
+      "cliLoginAuthorizeTitle": "CLIログイン状態を許可",
+      "cliLoginAuthorizeMessage": "プラグインがClaude CLIのログインセッションをAPIリクエストに使用することを許可します。事前にターミナルでClaude CLIにログインしている必要があります。",
+      "cliLoginAuthorizeDetail": "プラグインは認証をClaude SDKのネイティブOAuthフローに委任します。この許可はいつでも取り消すことができます。",
+      "cliLoginDisableTitle": "CLIログイン許可を取り消す",
+      "cliLoginDisableMessage": "CLIログイン状態の使用を停止し、別のプロバイダーを明示的に有効にするまでClaudeはアクティブなプロバイダーがない状態になります。",
+      "cliLoginAccountInfo": "ログイン中: {{email}}",
       "subscriptionTutorial": {
         "entry": "サブスクリプションアカウントガイド",
         "dialogTitle": "サブスクリプションアカウントの使い方",
@@ -503,6 +514,13 @@
         "modelIdPlaceholder": "Model ID (required, e.g., gpt-4o)",
         "modelLabelPlaceholder": "Display name (optional)",
         "modelDescPlaceholder": "Model description (optional)",
+        "cliLoginProviderName": "Codex CLI ログイン",
+        "cliLoginProviderDescription": "Codex CLI の ChatGPT サブスクリプションのログインを使用",
+        "cliLoginAuthorizeTitle": "Codex CLI ログインを有効",
+        "cliLoginAuthorizeMessage": "config.toml をクリアし、Codex CLI の ChatGPT サブスクリプションのログインを使用します。",
+        "cliLoginAuthorizeDetail": "ターミナルで 'codex login' でログイン済みか確認してください。現在の config.toml はバックアップされます。",
+        "cliLoginDisableTitle": "Codex CLI ログインを無効",
+        "cliLoginDisableMessage": "以前の config.toml を復元し、API Key 認証に切り替えます。",
         "modelIdRequired": "Model ID is required",
         "modelIdInvalid": "Invalid model ID format (only letters, numbers, dots, hyphens, underscores, slashes and colons allowed)",
         "modelIdDuplicate": "Model ID already exists"
@@ -1323,7 +1341,7 @@
   },
   "error": {
     "providerNotConfigured": "プロバイダー未設定",
-    "providerNotConfiguredDesc": "AIプロバイダーがまだ設定されていません。会話を開始する前に、プロバイダー設定でAPIキーを追加してください。",
-    "goToProviderSettings": "プロバイダー設定へ"
+    "providerNotConfiguredDesc": "AIプロバイダーがまだ設定されていないか、ローカル設定の使用が許可されていません。会話を開始する前に、プロバイダー管理設定でセットアップを完了してください。",
+    "goToProviderSettings": "設定へ"
   }
 }

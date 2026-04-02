@@ -1,5 +1,8 @@
 package com.github.claudecodegui.handler;
 
+import com.github.claudecodegui.handler.core.BaseMessageHandler;
+import com.github.claudecodegui.handler.core.HandlerContext;
+
 import com.github.claudecodegui.bridge.NodeDetector;
 import com.github.claudecodegui.dependency.DependencyManager;
 import com.github.claudecodegui.model.NodeDetectionResult;
@@ -13,6 +16,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -30,6 +34,7 @@ public class DependencyHandler extends BaseMessageHandler {
         "uninstall_dependency",       // Uninstall SDK
         "update_dependency",          // Update SDK (uninstall + reinstall)
         "check_dependency_updates",   // Check for updates
+        "get_dependency_versions",    // Get selectable versions
         "check_node_environment"      // Check Node.js environment
     };
 
@@ -88,6 +93,9 @@ public class DependencyHandler extends BaseMessageHandler {
                 return true;
             case "check_dependency_updates":
                 this.handleCheckUpdates(content);
+                return true;
+            case "get_dependency_versions":
+                this.handleGetDependencyVersions(content);
                 return true;
             case "check_node_environment":
                 this.handleCheckNodeEnvironment();
@@ -170,6 +178,9 @@ public class DependencyHandler extends BaseMessageHandler {
         try {
             JsonObject json = this.gson.fromJson(content, JsonObject.class);
             String sdkId = json.get("id").getAsString();
+            String requestedVersion = json.has("version") && !json.get("version").isJsonNull()
+                    ? json.get("version").getAsString()
+                    : null;
 
             SdkDefinition sdk = SdkDefinition.fromId(sdkId);
             if (sdk == null) {
@@ -201,7 +212,7 @@ public class DependencyHandler extends BaseMessageHandler {
                         return;
                     }
 
-                    InstallResult result = this.dependencyManager.installSdkSync(sdkId, (logLine) -> {
+                    InstallResult result = this.dependencyManager.installSdkSync(sdkId, requestedVersion, (logLine) -> {
                         this.sendInstallProgress(sdkId, logLine);
                     });
 
@@ -277,6 +288,9 @@ public class DependencyHandler extends BaseMessageHandler {
         try {
             JsonObject json = this.gson.fromJson(content, JsonObject.class);
             String sdkId = json.get("id").getAsString();
+            String requestedVersion = json.has("version") && !json.get("version").isJsonNull()
+                    ? json.get("version").getAsString()
+                    : null;
 
             SdkDefinition sdk = SdkDefinition.fromId(sdkId);
             if (sdk == null) {
@@ -307,7 +321,7 @@ public class DependencyHandler extends BaseMessageHandler {
                     }
 
                     this.sendInstallProgress(sdkId, "Updating SDK with npm install...");
-                    InstallResult result = this.dependencyManager.installSdkSync(sdkId, (logLine) -> {
+                    InstallResult result = this.dependencyManager.installSdkSync(sdkId, requestedVersion, (logLine) -> {
                         this.sendInstallProgress(sdkId, logLine);
                     });
 
@@ -387,6 +401,48 @@ public class DependencyHandler extends BaseMessageHandler {
             LOG.error("[DependencyHandler] Failed to check updates: " + e.getMessage(), e);
             this.sendErrorResult("dependencyUpdateAvailable", e.getMessage());
             this.sendShowError("检查依赖更新失败: " + e.getMessage());
+        }
+    }
+
+    private void handleGetDependencyVersions(String content) {
+        try {
+            String sdkId = null;
+            if (content != null && !content.isEmpty()) {
+                JsonObject json = this.gson.fromJson(content, JsonObject.class);
+                if (json.has("id")) {
+                    sdkId = json.get("id").getAsString();
+                }
+            }
+
+            final String targetSdkId = sdkId;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    JsonObject payload = new JsonObject();
+                    if (targetSdkId != null) {
+                        payload.add(targetSdkId, this.buildVersionPayload(targetSdkId));
+                    } else {
+                        for (SdkDefinition sdk : SdkDefinition.values()) {
+                            payload.add(sdk.getId(), this.buildVersionPayload(sdk.getId()));
+                        }
+                    }
+
+                    ApplicationManager.getApplication().invokeLater(
+                        () -> this.callJavaScript(
+                            "window.dependencyVersionsLoaded",
+                            this.escapeJs(this.gson.toJson(payload))
+                        )
+                    );
+                } catch (Exception e) {
+                    LOG.error("[DependencyHandler] Failed to get dependency versions: " + e.getMessage(), e);
+                    this.sendErrorResult("dependencyVersionsLoaded", e.getMessage());
+                }
+            }, AppExecutorUtil.getAppExecutorService()).exceptionally(ex -> {
+                LOG.error("[DependencyHandler] Unexpected error in handleGetDependencyVersions: " + ex.getMessage(), ex);
+                return null;
+            });
+        } catch (Exception e) {
+            LOG.error("[DependencyHandler] Failed to parse dependency versions request: " + e.getMessage(), e);
+            this.sendErrorResult("dependencyVersionsLoaded", e.getMessage());
         }
     }
 
@@ -514,6 +570,30 @@ public class DependencyHandler extends BaseMessageHandler {
 
         if (info.getErrorMessage() != null) {
             json.addProperty("error", info.getErrorMessage());
+        }
+
+        return json;
+    }
+
+    private JsonObject buildVersionPayload(String sdkId) {
+        JsonObject json = new JsonObject();
+        List<String> remoteVersions = this.dependencyManager.getAvailableVersions(sdkId);
+        List<String> fallbackVersions = this.dependencyManager.getFallbackVersions(sdkId);
+        boolean usingRemote = !remoteVersions.isEmpty();
+        List<String> effectiveVersions = usingRemote ? remoteVersions : fallbackVersions;
+
+        json.addProperty("sdkId", sdkId);
+        json.add("versions", this.gson.toJsonTree(effectiveVersions));
+        json.add("fallbackVersions", this.gson.toJsonTree(fallbackVersions));
+        json.addProperty("source", usingRemote ? "remote" : "fallback");
+
+        String latestVersion = this.dependencyManager.getLatestVersion(sdkId);
+        if (latestVersion != null && !latestVersion.isEmpty()) {
+            json.addProperty("latestVersion", latestVersion);
+        }
+
+        if (!usingRemote) {
+            json.addProperty("error", "remote_versions_unavailable");
         }
 
         return json;

@@ -118,7 +118,8 @@
         "spanish": "Español",
         "french": "Français",
         "japanese": "日本語",
-        "russian": "Русский"
+        "russian": "Русский",
+        "korean": "한국어"
       },
       "nodePath": {
         "label": "Node.js Path",
@@ -153,7 +154,7 @@
         "hint": "When enabled, AI responses will appear character by character in real-time, instead of waiting for the complete response. May consume more resources."
       },
       "autoOpenFile": {
-        "label": "Auto Open File",
+        "label": "Send Opened File Path",
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When enabled, selecting a file in the project tree will automatically send its file path to AI (note: only the file path is sent, not the file content). When disabled, manual action is required."
@@ -163,6 +164,18 @@
         "enabled": "Expanded",
         "disabled": "Collapsed",
         "hint": "When enabled, code diffs in chat will be expanded by default. When disabled, diffs start collapsed and can be expanded by clicking."
+      },
+      "commitGeneration": {
+        "label": "AI Commit Message Generation",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "hint": "When enabled, shows the 'AI Generate Commit Message' button in the commit dialog. When disabled, the button is hidden."
+      },
+      "statusBarWidget": {
+        "label": "Status Bar Info Display",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "hint": "When enabled, shows current model and mode info in the IDE status bar (e.g. GUI [Opus] {Auto}). When disabled, the widget is hidden."
       },
       "sendShortcut": {
         "label": "Send Shortcut",
@@ -176,6 +189,17 @@
         "custom": "Custom",
         "reset": "Reset",
         "hint": "Customize the chat area background color. Leave empty to follow the theme default."
+      },
+      "diffTheme": {
+        "label": "Diff Theme",
+        "follow": "Follow UI",
+        "followDesc": "Match the current chat UI light or dark theme",
+        "editor": "Follow Editor",
+        "editorDesc": "Stay closer to the IDE editor diff atmosphere",
+        "light": "Light",
+        "lightDesc": "Cleaner and better integrated with the settings page",
+        "softDark": "Soft Dark",
+        "softDarkDesc": "Keep code contrast without the harsh black background"
       },
       "soundNotification": {
         "label": "Task Completion Sound",
@@ -234,9 +258,20 @@
       "uninstall": "Uninstall",
       "uninstalling": "Uninstalling...",
       "update": "Update",
+      "installVersion": "Install {{version}}",
+      "updateToVersion": "Update to {{version}}",
+      "rollbackToVersion": "Rollback to {{version}}",
+      "currentVersionAction": "Current version",
       "updateAvailable": "Update available",
       "installLogs": "Install Logs",
       "waitingForLogs": "Waiting for log output...",
+      "targetVersion": "Target version",
+      "loadingVersions": "Version list loading",
+      "installedVersion": "Installed {{version}}",
+      "latestStableVersion": "Latest stable {{version}}",
+      "targetVersionValue": "Target {{version}}",
+      "versionSourceFallback": "Remote versions could not be loaded. Showing the built-in recommended versions instead. You can still enter a version manually.",
+      "rollbackWarning": "This is a rollback operation. Re-check the related AI features after switching versions.",
       "nodeNotConfigured": "Node.js is not configured. Please set the Node.js path in Basic Settings first.",
       "installSuccess": "{{name}} installed successfully",
       "installFailed": "Installation failed: {{error}}",
@@ -345,7 +380,8 @@
     "provider": {
       "currentConfig": "Current ClaudeCode Configuration",
       "loading": "Loading...",
-      "noConfig": "No configuration",
+      "noConfig": "No local configuration found",
+      "noConfigDescription": "No readable API key or endpoint was found in the authorized local Claude configuration.",
       "emptyProvider": "No provider configured",
       "notConfigured": "Not configured",
       "apiKey": "API Key",
@@ -387,9 +423,30 @@
       "confirmConvert": "Confirm Conversion",
       "inUse": "In Use",
       "enable": "Enable",
-      "localProviderName": "Local settings.json",
-      "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
+      "authorizeAndEnable": "Authorize and Enable",
+      "authorizeLoadConfig": "Authorize and Load Current Config",
+      "refreshConfig": "Refresh Current Config",
+      "configHiddenTitle": "Local Claude configuration is hidden by default",
+      "configHiddenDescription": "To protect local credentials and settings, the plugin will not read ~/.claude/settings.json until you explicitly authorize a one-time load.",
+      "officialRouteNotice": "Requests are configured to go directly to the official Anthropic API.",
+      "proxyRouteNotice": "Requests are routed through a third-party or proxy endpoint instead of directly to the official Anthropic API.",
+      "localProviderName": "Authorized local settings.json",
+      "localProviderDescription": "Explicitly authorize reading ~/.claude/settings.json",
+      "localProviderAuthorizeTitle": "Authorize local settings.json access",
+      "localProviderAuthorizeMessage": "This will allow the plugin to read ~/.claude/settings.json for Claude requests.",
+      "localProviderAuthorizeDetail": "You can revoke this authorization at any time. The plugin will not modify your local file.",
+      "localProviderDisableTitle": "Cancel local settings.json authorization",
+      "localProviderDisableMessage": "This will stop using ~/.claude/settings.json and leave Claude with no active provider until you explicitly enable another one.",
+      "revokeAuthorization": "Revoke Authorization",
       "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
+      "cliLoginProviderName": "CLI Login State",
+      "cliLoginProviderDescription": "Reuse your existing Claude CLI login state completed in the terminal",
+      "cliLoginAuthorizeTitle": "Authorize CLI Login State",
+      "cliLoginAuthorizeMessage": "This will allow the plugin to use your Claude CLI login session for API requests. You must have already logged in via the Claude CLI in your terminal.",
+      "cliLoginAuthorizeDetail": "The plugin delegates authentication to the Claude SDK's native OAuth flow. You can revoke this authorization at any time.",
+      "cliLoginDisableTitle": "Revoke CLI Login Authorization",
+      "cliLoginDisableMessage": "This will stop using CLI login state and leave Claude with no active provider until you explicitly enable another one.",
+      "cliLoginAccountInfo": "Logged in as: {{email}}",
       "subscriptionTutorial": {
         "entry": "Subscription Account Guide",
         "dialogTitle": "How to use a subscription account",
@@ -450,9 +507,14 @@
       "dialog": {
         "addTitle": "Add Provider",
         "editTitle": "Edit Provider: {{name}}",
-        "addDescription": "Configure new provider information",
+        "addDescription": "Configure a Claude-compatible provider. Official direct mode is the default.",
         "securityNotice": "Notice: All settings are stored locally on your computer. This project is 100% open source. Please feel free to use it.",
         "editDescription": "Changes will be applied immediately to the current provider.",
+        "officialSectionTitle": "Official Direct API",
+        "officialPreset": "Anthropic Official Direct",
+        "officialSectionHint": "Use your manually entered credentials with the official endpoint https://api.anthropic.com.",
+        "proxySectionTitle": "Third-Party / Proxy Presets",
+        "proxySectionHint": "These presets route requests through a third-party or proxy provider endpoint instead of the official Anthropic API.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Claude Official",
         "remark": "Remark",
@@ -462,7 +524,9 @@
         "apiKeyHint": "Please enter your API Key",
         "apiUrl": "API Endpoint",
         "apiUrlPlaceholder": "https://api.anthropic.com",
-        "apiUrlHint": "Enter Claude API compatible service endpoint address",
+        "apiUrlHint": "Enter a Claude-compatible service endpoint. Official direct mode should use https://api.anthropic.com.",
+        "apiUrlLockedHint": "Official direct mode always uses the fixed Anthropic endpoint https://api.anthropic.com.",
+        "proxyEndpointWarning": "Requests will be routed through that endpoint instead of directly to the official Anthropic API.",
         "modelMapping": "Model Mapping (will be injected into JSON env)",
         "mainModel": "Main Model",
         "mainModelPlaceholder": "e.g., claude-sonnet-4-6",
@@ -534,6 +598,13 @@
         "modelIdPlaceholder": "Model ID (required, e.g., gpt-4o)",
         "modelLabelPlaceholder": "Display name (optional)",
         "modelDescPlaceholder": "Model description (optional)",
+        "cliLoginProviderName": "Codex CLI Login",
+        "cliLoginProviderDescription": "Use ChatGPT subscription credentials from Codex CLI",
+        "cliLoginAuthorizeTitle": "Authorize Local Codex Config Access",
+        "cliLoginAuthorizeMessage": "The plugin will read the existing local configuration from ~/.codex/config.toml and auth.json.",
+        "cliLoginAuthorizeDetail": "This will not modify or overwrite your config.toml or auth.json, and you can revoke the authorization at any time.",
+        "cliLoginDisableTitle": "Revoke Local Codex Config Authorization",
+        "cliLoginDisableMessage": "The plugin will stop reading ~/.codex/config.toml and auth.json.",
         "modelIdRequired": "Model ID is required",
         "modelIdInvalid": "Invalid model ID format (only letters, numbers, dots, hyphens, underscores, slashes and colons allowed)",
         "modelIdDuplicate": "Model ID already exists"
@@ -783,6 +854,7 @@
     "thinkingDisabled": "Thinking disabled",
     "configLoading": "Configuration loading, please try again",
     "saveSuccess": "Saved successfully",
+    "restartRequired": "Please restart IDEA for this setting to take effect",
     "saveFailed": "Save failed",
     "deleteSuccess": "Deleted successfully",
     "operationFailed": "Operation failed",
@@ -1038,6 +1110,7 @@
     "editPrefix": "Edit: {{fileName}}",
     "lineRange": "Lines {{start}}-{{end}}",
     "lineSingle": "Line {{line}}",
+    "editLocationsSuffix": " more",
     "filePath": "File path:",
     "unknownTool": "Unknown tool",
     "bashGroupBatchRun": "Batch Run Commands",
@@ -1441,7 +1514,7 @@
   },
   "error": {
     "providerNotConfigured": "Provider Not Configured",
-    "providerNotConfiguredDesc": "No AI provider is set up yet. Please add an API key in provider settings before starting a conversation.",
-    "goToProviderSettings": "Go to Provider Settings"
+    "providerNotConfiguredDesc": "No AI provider is configured yet, or access to the local configuration has not been authorized. Please complete setup in Provider Management settings before starting a conversation.",
+    "goToProviderSettings": "Go to Settings"
   }
 }

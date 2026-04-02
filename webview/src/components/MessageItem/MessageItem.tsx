@@ -32,6 +32,7 @@ export interface MessageItemProps {
   extractMarkdownContent: (message: ClaudeMessage) => string;
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
   onNavigateToProviderSettings?: () => void;
+  toolResultSignature?: string;
 }
 
 type GroupedBlock =
@@ -207,6 +208,7 @@ export const MessageItem = memo(function MessageItem({
   extractMarkdownContent,
   onNodeRef,
   onNavigateToProviderSettings,
+  toolResultSignature: _toolResultSignature,
 }: MessageItemProps): React.ReactElement {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [showStreamingConnectHint, setShowStreamingConnectHint] = useState(false);
@@ -216,12 +218,22 @@ export const MessageItem = memo(function MessageItem({
 
   // Manage thinking expansion state locally to avoid prop drilling and unnecessary re-renders
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
+  // Track which thinking blocks were manually expanded by the user
+  const [manuallyExpandedThinking, setManuallyExpandedThinking] = useState<Record<number, boolean>>({});
 
   const toggleThinking = useCallback((blockIndex: number) => {
-    setExpandedThinking((prev) => ({
-      ...prev,
-      [blockIndex]: !prev[blockIndex],
-    }));
+    setExpandedThinking((prev) => {
+      const newExpanded = !prev[blockIndex];
+      // Mark this block as manually toggled by the user
+      setManuallyExpandedThinking((manualPrev) => ({
+        ...manualPrev,
+        [blockIndex]: newExpanded,
+      }));
+      return {
+        ...prev,
+        [blockIndex]: newExpanded,
+      };
+    });
   }, []);
 
   const isThinkingExpanded = useCallback(
@@ -307,17 +319,22 @@ export const MessageItem = memo(function MessageItem({
     if (lastThinkingIndex !== lastAutoExpandedIndexRef.current) {
       setExpandedThinking((prev) => {
         const newState = { ...prev };
-        // Collapse all thinking blocks
+        // Only collapse thinking blocks that were NOT manually expanded by the user
         thinkingIndices.forEach((idx) => {
-          newState[idx] = false;
+          // Preserve manually expanded state
+          if (!manuallyExpandedThinking[idx]) {
+            newState[idx] = false;
+          }
         });
-        // Expand the latest one
-        newState[lastThinkingIndex] = true;
+        // Auto-expand the latest one (unless user manually collapsed it)
+        if (!manuallyExpandedThinking[lastThinkingIndex] || prev[lastThinkingIndex] === undefined) {
+          newState[lastThinkingIndex] = true;
+        }
         return newState;
       });
       lastAutoExpandedIndexRef.current = lastThinkingIndex;
     }
-  }, [blocks, isMessageStreaming]);
+  }, [blocks, isMessageStreaming, manuallyExpandedThinking]);
 
   const groupedBlocks = useMemo(() => groupBlocks(blocks), [blocks]);
 

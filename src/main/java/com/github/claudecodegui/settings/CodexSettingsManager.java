@@ -200,6 +200,139 @@ public class CodexSettingsManager {
     }
 
     /**
+     * Check if Codex CLI login credentials are available in ~/.codex/auth.json.
+     * Looks for "auth_mode": "chatgpt" and valid tokens.
+     */
+    public boolean isCodexCliLoginAvailable() {
+        try {
+            JsonObject auth = readAuthJson();
+            if (auth == null) {
+                return false;
+            }
+            // Check for chatgpt auth mode with tokens
+            if (auth.has("auth_mode") && "chatgpt".equals(auth.get("auth_mode").getAsString())) {
+                if (auth.has("tokens") && auth.get("tokens").isJsonObject()) {
+                    JsonObject tokens = auth.getAsJsonObject("tokens");
+                    return tokens.has("access_token") && !tokens.get("access_token").isJsonNull();
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            LOG.debug("[CodexSettingsManager] Failed to check CLI login availability: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Read Codex CLI login account info (email, name) from the JWT id_token in auth.json.
+     * Only extracts safe display fields, never credentials or tokens.
+     *
+     * <p><b>Security note:</b> The JWT payload is decoded without signature verification.
+     * The returned data is intended <b>only for UI display</b> (email, name, plan type)
+     * and MUST NOT be used for authorization or access-control decisions.</p>
+     *
+     * @return JsonObject with email/name, or null if not available
+     */
+    public JsonObject readCodexCliLoginAccountInfo() {
+        try {
+            JsonObject auth = readAuthJson();
+            if (auth == null || !auth.has("tokens") || !auth.get("tokens").isJsonObject()) {
+                return null;
+            }
+
+            JsonObject tokens = auth.getAsJsonObject("tokens");
+            if (!tokens.has("id_token") || tokens.get("id_token").isJsonNull()) {
+                return null;
+            }
+
+            String idToken = tokens.get("id_token").getAsString();
+            // JWT format: header.payload.signature — decode the payload section
+            String[] parts = idToken.split("\\.");
+            if (parts.length < 2) {
+                return null;
+            }
+
+            // Base64url decode the payload
+            String payload = parts[1];
+            // Pad to multiple of 4
+            while (payload.length() % 4 != 0) {
+                payload += "=";
+            }
+            byte[] decoded = java.util.Base64.getUrlDecoder().decode(payload);
+            String jsonStr = new String(decoded, StandardCharsets.UTF_8);
+
+            JsonObject claims = JsonParser.parseString(jsonStr).getAsJsonObject();
+            JsonObject safeInfo = new JsonObject();
+
+            if (claims.has("email")) {
+                safeInfo.addProperty("emailAddress", claims.get("email").getAsString());
+            }
+            if (claims.has("name")) {
+                safeInfo.addProperty("name", claims.get("name").getAsString());
+            }
+
+            // Also extract plan info if available (from https://api.openai.com/auth claim)
+            if (claims.has("https://api.openai.com/auth") && claims.get("https://api.openai.com/auth").isJsonObject()) {
+                JsonObject authClaim = claims.getAsJsonObject("https://api.openai.com/auth");
+                if (authClaim.has("chatgpt_plan_type")) {
+                    safeInfo.addProperty("planType", authClaim.get("chatgpt_plan_type").getAsString());
+                }
+            }
+
+            return safeInfo;
+        } catch (Exception e) {
+            LOG.debug("[CodexSettingsManager] Failed to read CLI login account info: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Apply Codex CLI login mode to ~/.codex/ settings.
+     * Clears config.toml (to use official defaults) while preserving auth.json (OAuth tokens).
+     * Backs up existing config.toml before clearing.
+     *
+     * @throws IOException if backup or write fails
+     */
+    public void applyCodexCliLoginToSettings() throws IOException {
+        Path configTomlPath = getConfigTomlPath();
+        Path backupPath = codexDir.resolve("config.toml.cli_backup");
+
+        // Backup existing config.toml if it exists and has content
+        if (Files.exists(configTomlPath)) {
+            String content = Files.readString(configTomlPath, StandardCharsets.UTF_8);
+            if (content != null && !content.trim().isEmpty()) {
+                Files.copy(configTomlPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+                LOG.info("[CodexSettingsManager] Backed up config.toml to: " + backupPath);
+            }
+        }
+
+        // Clear config.toml — empty file means Codex SDK uses official defaults
+        writeConfigTomlRaw("");
+
+        // auth.json is left untouched — it already contains the OAuth tokens from 'codex login'
+        LOG.info("[CodexSettingsManager] Applied Codex CLI login mode (config.toml cleared, auth.json preserved)");
+    }
+
+    /**
+     * Remove Codex CLI login mode by restoring the backed-up config.toml.
+     * Called when switching away from CLI login mode.
+     *
+     * @throws IOException if restore fails
+     */
+    public void removeCodexCliLoginFromSettings() throws IOException {
+        Path backupPath = codexDir.resolve("config.toml.cli_backup");
+
+        if (Files.exists(backupPath)) {
+            Path configTomlPath = getConfigTomlPath();
+            Files.copy(backupPath, configTomlPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.deleteIfExists(backupPath);
+            LOG.info("[CodexSettingsManager] Restored config.toml from CLI login backup");
+        } else {
+            LOG.info("[CodexSettingsManager] No CLI login backup found, nothing to restore");
+        }
+    }
+
+    /**
      * Get current Codex configuration (combined from config.toml and auth.json)
      */
     public JsonObject getCurrentCodexConfig() throws IOException {

@@ -13,6 +13,174 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: '0.3.3',
+    date: '2026-04-01',
+    content: {
+      en: `✨ Features
+- Add SDK version selector with remote/fallback version lists, version comparison, and rollback warnings; add unit tests for versioning and provider management
+- Add Codex CLI Login virtual provider: reads ~/.codex/config.toml and auth.json with explicit user authorization; gate Codex MCP server access behind local config authorization; add i18n for all 9 locales
+- Add EditToolBlock with LCS-based diff display, line number navigation, and click-to-jump; add EditToolGroupBlock for batch edit display; integrate IDEA file open/refresh/diff actions
+- Add diff theme system with 4 modes (follow IDE / editor / light / soft-dark) and compact dropdown selector
+- Add MCP tool name and input normalization for edit_file/write_file tools
+- Add streaming heartbeat (10s) to prevent false stall detection during tool execution; add sequence numbers to discard stale updateMessages snapshots
+- Add settings toggles for AI commit message generation and status bar widget visibility, persisted with restart-required toast
+- Enhance Codex mode task plan and sub-agent display; fix duplicate tool call rendering
+- Add pre-React callback buffering for early window bridge messages; persist tab session state across IDE restarts
+- Add preserveLatestMessagesOnShrink for Codex conversation compaction
+
+🐛 Fixes
+- Fix stream reliability for long sessions: adaptive JCEF throttling (500ms–5s), 45s stream stall watchdog, debounce scroll-to-bottom with rAF
+- Fix watchdog incorrectly reloading webview during active streaming: extend heartbeat to 3 minutes; replay onStreamStart after reload; add 15s safety timeout for session transition guard
+- Fix stale rAF updateMessages overwriting final state after stream ends: add cancellation mechanism and strip __turnId from streaming messages
+- Fix assistant messages from different streaming turns being incorrectly merged
+- Fix Codex session ID mismatch: use UUID from session_meta.id as canonical ID; fix filename matching to contains for UUID-embedded filenames; strip system XML tags before title extraction
+- Fix Codex history file too large causing messages not to display in real time after restoring history #kyon777
+- Fix ChatInputBox dropdown crashing when icon values are not strings; safely handle inline SVG icons for @ completions #gadfly3173 (#820)
+- Fix tool window and detached session cleanup: ensure tabs own disposal; add project-scoped cleanup #gadfly3173 (#795)
+- Fix hardcoded diff colors in EditToolGroupBlock to use CSS variables
+- Hide transient internal tool names after streaming completes
+
+⚡ Performance
+- Coalesce updateMessages via rAF in frontend to avoid parsing large JSON payloads on every 50ms push, eliminating the "fake freeze" symptom for long sessions
+- Adaptive JCEF throttling in StreamMessageCoalescer: scale update interval based on payload size to prevent IPC saturation
+
+🔧 Improvements
+- Extract tool name/input normalization from codex-event-handler into dedicated codex-tool-normalization.js module
+- Refactor diff theme selector from card-style buttons to compact dropdown; fix diff row background not filling full width
+- Replace Swing JFileChooser with IntelliJ FileChooser API for skill file selection
+- Extract shared normalizeTodoStatus/RawTodoItem into todoShared.ts; tighten isError detection to avoid false positives
+- Security: add semver validation in DependencyManager to prevent npm install argument injection; strip exception details from user-facing errors; fix resource leak in ProjectConfigHandler; add Javadoc security note to CodexSettingsManager`,
+      zh: `✨ Features
+- 新增 SDK 版本选择器：支持远程/本地回退版本列表、版本对比和回滚警告，新增版本管理和 Provider 单元测试
+- 新增 Codex CLI Login 虚拟 Provider：读取 ~/.codex/config.toml 和 auth.json，需用户明确授权；Codex MCP 服务器访问受本地配置授权限制；更新 9 种语言国际化翻译
+- 新增 EditToolBlock：基于 LCS 算法展示差异、行号显示和点击跳转；新增 EditToolGroupBlock 批量编辑展示；集成 IDEA 文件打开/刷新/差异对比
+- 新增 Diff 主题系统：4 种模式（跟随 IDE / 编辑器 / 浅色 / 柔和深色），选择器改为紧凑下拉框
+- 新增 MCP 工具名称和输入规范化（支持 edit_file/write_file）
+- 新增流式心跳（10s）防止工具执行期间误判流卡死；新增序列号机制丢弃过期的 updateMessages 快照
+- 新增 AI 提交消息生成和状态栏 Widget 显示的设置开关，重启后生效
+- 增强 Codex 模式任务计划与子代理展示，修复工具调用重复渲染
+- 新增 React 初始化前的回调缓冲机制；跨 IDE 重启持久化 Tab 会话状态
+- 新增 Codex 对话压缩时保留最新消息（preserveLatestMessagesOnShrink）
+
+🐛 Fixes
+- 修复长会话流式可靠性及 UI 卡顿：StreamMessageCoalescer 自适应 JCEF 节流（500ms–5s），45s Stream Watchdog，rAF 防抖 scroll-to-bottom
+- 修复流式传输期间看门狗误判并重载 WebView：流式过程中心跳超时延长至 3 分钟；WebView 重载后重放 onStreamStart；会话切换守卫添加 15s 安全超时
+- 修复流结束后 rAF updateMessages 过期快照覆盖最终状态：新增取消机制，去除 __turnId
+- 修复不同流式轮次的助手消息被错误合并
+- 修复 Codex 会话 ID 不匹配：使用 session_meta.id 的 UUID 作为标准 ID；文件名匹配改为 contains；标题提取前去除系统 XML 标签
+- 修复 Codex 历史文件过大导致恢复历史后继续对话时消息不实时显示 #kyon777
+- 修复 ChatInputBox 下拉列表在图标值非字符串时崩溃，安全处理 @ 文件/文件夹补全的 SVG 图标 #gadfly3173 (#820)
+- 修复工具窗口和分离会话资源泄漏，项目关闭时清理分离会话 #gadfly3173 (#795)
+- 修复 EditToolGroupBlock 中硬编码差异颜色，改为 CSS 变量
+- 流式传输结束后隐藏内部工具名称
+
+⚡ Performance
+- 前端通过 rAF 合并 updateMessages 调用，避免每 50ms 解析大型 JSON 负载，消除长会话"假卡死"现象
+- StreamMessageCoalescer 自适应 JCEF 节流：根据负载大小动态调整更新间隔，防止 IPC 饱和
+
+🔧 Improvements
+- 从 codex-event-handler 提取工具名称/输入规范化到独立的 codex-tool-normalization.js 模块
+- 重构 Diff 主题选择器为紧凑下拉框；修复差异行背景不充满全宽的问题
+- 技能文件选择改用 IntelliJ FileChooser API，替换 Swing JFileChooser
+- 提取共享的 normalizeTodoStatus/RawTodoItem 到 todoShared.ts；收紧 isError 检测避免误报
+- 安全加固：DependencyManager 新增 semver 格式校验防止参数注入；用户侧错误消息去除异常详情；修复 ProjectConfigHandler 资源泄漏；为 CodexSettingsManager 添加 JWT 安全说明`,
+    },
+  },
+  {
+    version: '0.3.2',
+    date: '2026-03-25',
+    content: {
+      en: `✨ Features
+- Add provider runtime state detection: introduce getClaudeRuntimeState() to determine access mode (managed/local/cli_login/inactive); limit proxy/TLS env injection to local and cli_login modes; clear injected env vars on each setupApiKey() call to prevent stale value leaks
+- Rename ANTHROPIC_DEFAULT_HAIKU_MODEL → ANTHROPIC_SMALL_FAST_MODEL across provider presets, ProviderDialog, types and model state hooks; keep legacy key for backward compatibility
+
+🐛 Fixes
+- Fix provider model mapping section always hidden: set showModelMappingSection to always true; return CUSTOM_PROXY_PRESET_ID for unrecognized proxy endpoints to keep model mapping enabled for third-party configs
+- Fix terminal monitor EDT threading and lifecycle leaks: avoid blocking widget discovery on EDT, bind listeners to project/widget lifecycles #gadfly3173 (#774)
+- Fix scrollbar cursor showing I-beam instead of arrow: move cursor:text to .markdown-content; retain I-beam on code content only #jhaan83 (#767)
+- Fix session index corruption from invalid Unicode titles #gadfly3173 (#769)
+- Fix permission watcher thread not stopping promptly on disposal: interrupt thread and handle InterruptedException (#781)
+
+⚡ Performance
+- Optimize streaming and UUID sync: add StreamDeltaThrottler to batch stream deltas; replace full history load with getLatestUserMessage for UUID sync; add patchMessageUuid webview callback; add active request tracking in DaemonBridge with extended heartbeat timeout
+
+🔧 Improvements
+- Add unit tests for StreamDeltaThrottler, DaemonBridge, and MessageJsonConverter
+- Remove unused CursorHandler
+- Update action icons with unified cc-gui-icon.svg; redesign cc-gui-icon.svg
+- Rename "Send to CCG" to "Send File Path to CC GUI" across all 9 languages; rename CCG → CC GUI in all i18n strings`,
+      zh: `✨ Features
+- 新增 Provider 运行时状态检测：引入 getClaudeRuntimeState() 判断访问模式（managed/local/cli_login/inactive），仅在 local 和 cli_login 模式下注入代理/TLS 环境变量，每次 setupApiKey() 调用时清除注入变量防止泄漏
+- 重命名 ANTHROPIC_DEFAULT_HAIKU_MODEL → ANTHROPIC_SMALL_FAST_MODEL，覆盖 Provider 预设、ProviderDialog、类型和模型状态 hooks；保留旧 key 兼容性
+
+🐛 Fixes
+- 修复 Provider 模型映射区域始终隐藏：强制 showModelMappingSection 为 true；对无法识别的代理端点返回 CUSTOM_PROXY_PRESET_ID，确保第三方代理配置下模型映射保持启用
+- 修复终端监控器 EDT 线程问题及生命周期泄漏：避免在 EDT 上阻塞 Widget 发现，将监听器绑定至项目和 Widget 生命周期 #gadfly3173 (#774)
+- 修复滚动条光标显示为输入光标而非箭头：将 cursor:text 移至 .markdown-content，仅代码内容保留输入光标 #jhaan83 (#767)
+- 修复会话索引因无效 Unicode 标题导致写入损坏 #gadfly3173 (#769)
+- 修复权限监视器线程无法及时停止：停止时中断线程并处理 InterruptedException (#781)
+
+⚡ Performance
+- 优化流式传输和 UUID 同步：新增 StreamDeltaThrottler 批处理流增量；使用 getLatestUserMessage 替代全量历史加载进行 UUID 同步；新增 patchMessageUuid webview 回调；DaemonBridge 新增活跃请求跟踪并延长心跳超时
+
+🔧 Improvements
+- 新增 StreamDeltaThrottler、DaemonBridge、MessageJsonConverter 单元测试
+- 移除未使用的 CursorHandler
+- 统一使用新版 cc-gui-icon.svg 更新操作图标；重新设计图标视觉风格
+- 将"Send to CCG"重命名为"Send File Path to CC GUI"，9 种语言全部更新；将 i18n 字符串中 CCG 统一重命名为 CC GUI`,
+    },
+  },
+  {
+    version: '0.3.1',
+    date: '2026-03-23',
+    content: {
+      en: `✨ Features
+- Add CLI Login provider: delegate auth to Claude SDK's native OAuth flow, with account info display and authorize/revoke dialogs; update i18n across 9 languages
+- Add provider deactivation support: deactivateClaudeProvider() sets current provider to empty, add confirmation dialogs for switching to/from local provider, simplify settings UI
+- Add Korean language support #KimTibber
+
+🐛 Fixes
+- Fix UI stuck in responding/thinking state: resolve race conditions in DaemonBridge, ClaudeMessageHandler, StreamMessageCoalescer, and streamingCallbacks.ts
+- Fix race condition where last streaming assistant message is lost: move ref cleanup into setMessages updater, add fallback recovery path #gadfly3173
+- Fix JCEF WebView incorrect cursor types on macOS: add CefDisplayHandler to map Chromium cursors to Swing (#753) #yogendrasinghx
+- Fix Codex history initial load returning fewer sessions than refresh: replace root-dir timestamp check with file-count comparison #gadfly3173
+- Fix MSYS2/Git Bash path conversion: handle ~, /home/<user>, /tmp, /dev/null mappings; consolidate temp dir resolution into PlatformUtils.getTempDirectory() #gadfly3173
+- Fix node path validation regression: reject invalid saved node paths and keep bridge state in sync #gadfly3173
+- Fix plugin installation and UI interaction reliability: versioned plugin dirs, thinking block state, enqueue dialog requests #hpstream
+- Rename "Auto Open File" to "Send Opened File Path" across all 8 locales (#693) #gadfly3173
+
+🔧 Improvements
+- Large-scale refactoring: ClaudeSDKBridge (1600+ lines) → 12 classes, DiffHandler → 7 modules, ClaudeSession → 5 modules, SlashCommandRegistry → 6 classes, CodexHistoryReader → 4 modules, PersistentQueryService and ChatInputBox split into focused modules
+- Reorganize Java package structure by domain (action, ui, handler subpackages)
+- Normalize model resolution: keep canonical model ID in Java, add env config normalization helpers with tests
+- Extract CursorHandler and throttle mousemove with requestAnimationFrame
+- Translate Chinese comments and JSDoc to English across 14 files
+- Rename plugin ID and project name to idea-claude-code-gui`,
+      zh: `✨ Features
+- 新增 CLI Login Provider：通过 Claude SDK 原生 OAuth 认证，ProviderList 显示账户信息及授权/撤销对话框，更新 9 种语言 i18n
+- 新增 Provider 停用支持：切换本地 Provider 时显示确认对话框，将 Provider 信息集成至 ProviderList 简化设置界面
+- 新增韩语支持 #KimTibber
+
+🐛 Fixes
+- 修复 UI 卡在"响应中/思考中"状态：修复 DaemonBridge、ClaudeMessageHandler、StreamMessageCoalescer 及 streamingCallbacks.ts 多处竞态
+- 修复流结束时最后一条助手消息丢失的竞态问题 #gadfly3173
+- 修复 JCEF WebView 在 macOS 上光标类型不正确 (#753) #yogendrasinghx
+- 修复 Codex 历史记录首次加载比刷新少会话 #gadfly3173
+- 修复 MSYS2/Git Bash 路径转换：处理 ~、/tmp、/dev/null 等映射 #gadfly3173
+- 修复 Node 路径验证回归：拒绝保存无效路径 #gadfly3173
+- 修复插件安装和 UI 交互可靠性：支持带版本号插件目录、对话框请求入队 #hpstream
+- 将"Auto Open File"重命名为"Send Opened File Path"，8 种语言全部更新 (#693) #gadfly3173
+
+🔧 Improvements
+- 大规模后端重构：ClaudeSDKBridge（1600+行）→ 12 个类，DiffHandler → 7 个模块，ClaudeSession → 5 个模块，SlashCommandRegistry → 6 个类，CodexHistoryReader → 4 个模块
+- 按领域重组 Java 包结构（action、ui、handler 子包）
+- 规范化模型解析和环境变量配置，新增辅助函数和单元测试
+- 提取 CursorHandler，使用 requestAnimationFrame 节流 mousemove 监听
+- 将 14 个文件中文注释和 JSDoc 统一翻译为英文
+- 重命名插件 ID 和项目名称为 idea-claude-code-gui`,
+    },
+  },
+  {
     version: '0.3',
     date: '2026-03-16',
     content: {

@@ -57,9 +57,24 @@ const MODEL_ID_TO_MAPPING_KEY: Record<string, string> = {
   'claude-haiku-4-5': 'haiku',
 };
 
+const resolveMappedModelName = (
+  mappingKey: string | undefined,
+  modelMapping: Record<string, string | undefined>
+): string | undefined => {
+  if (!mappingKey) {
+    return modelMapping.main?.trim() || undefined;
+  }
+
+  const mapped = modelMapping[mappingKey]
+    || (mappingKey === 'opus_1m' ? modelMapping.opus : undefined)
+    || modelMapping.main;
+
+  return mapped?.trim() || undefined;
+};
+
 /**
  * Resolve the display model name for icon matching.
- * For mapped models, returns the mapped name; otherwise the original ID.
+ * For mapped Claude models, returns the mapped name; otherwise the original ID.
  */
 const resolveModelIdForIcon = (
   modelId: string,
@@ -67,12 +82,12 @@ const resolveModelIdForIcon = (
   mappingKeyMap: Record<string, string>
 ): string => {
   const mappingKey = mappingKeyMap[modelId];
-  if (mappingKey) {
-    // opus_1m shares the same underlying model as opus; fall back when no
-    // dedicated mapping entry exists so the icon resolves correctly.
-    const mapped = modelMapping[mappingKey]
-      || (mappingKey === 'opus_1m' ? modelMapping['opus'] : undefined);
-    if (mapped?.trim()) return mapped.trim();
+  if (!mappingKey) {
+    return modelId;
+  }
+  const mapped = resolveMappedModelName(mappingKey, modelMapping);
+  if (mapped) {
+    return mapped;
   }
   return modelId;
 };
@@ -91,14 +106,12 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   const modelMapping = readClaudeModelMapping();
 
   const getModelLabel = (model: ModelInfo): string => {
-    // Check model mapping first (from local settings.json or provider config)
+    // Only apply Claude model mapping to Claude models (not Codex)
     const mappingKey = MODEL_ID_TO_MAPPING_KEY[model.id];
     if (mappingKey) {
-      // opus_1m falls back to opus mapping
-      const mappedName = modelMapping[mappingKey]
-        || (mappingKey === 'opus_1m' ? modelMapping['opus'] : undefined);
-      if (mappedName && mappedName.trim()) {
-        return mappedName.trim();
+      const mappedName = resolveMappedModelName(mappingKey, modelMapping);
+      if (mappedName) {
+        return mappedName;
       }
     }
 

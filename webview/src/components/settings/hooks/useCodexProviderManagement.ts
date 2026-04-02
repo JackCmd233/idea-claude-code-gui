@@ -131,6 +131,15 @@ export function useCodexProviderManagement(options: UseCodexProviderManagementOp
     setCodexLoading(true);
   }, []);
 
+  const handleRevokeCodexLocalConfigAuthorization = useCallback((fallbackProviderId?: string) => {
+    const data = {
+      fallbackProviderId: fallbackProviderId ?? '',
+    };
+    sendToJava(`revoke_codex_local_config_authorization:${JSON.stringify(data)}`);
+    setCodexLoading(true);
+    setCodexConfigLoading(true);
+  }, []);
+
   // Delete Codex provider
   const handleDeleteCodexProvider = useCallback((provider: CodexProviderConfig) => {
     setDeleteCodexConfirm({ isOpen: true, provider });
@@ -159,7 +168,6 @@ export function useCodexProviderManagement(options: UseCodexProviderManagementOp
     codexLoading,
     codexProviderDialog,
     deleteCodexConfirm,
-
     // Methods
     loadCodexProviders,
     updateCodexProviders,
@@ -170,10 +178,10 @@ export function useCodexProviderManagement(options: UseCodexProviderManagementOp
     handleCloseCodexProviderDialog,
     handleSaveCodexProvider,
     handleSwitchCodexProvider,
+    handleRevokeCodexLocalConfigAuthorization,
     handleDeleteCodexProvider,
     confirmDeleteCodexProvider,
     cancelDeleteCodexProvider,
-
     // Setter
     setCodexLoading,
     setCodexConfigLoading,

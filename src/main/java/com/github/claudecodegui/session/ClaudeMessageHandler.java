@@ -1,6 +1,6 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.ClaudeSession.Message;
+import com.github.claudecodegui.session.ClaudeSession.Message;
 import com.github.claudecodegui.handler.SettingsHandler;
 import com.github.claudecodegui.notifications.ClaudeNotifier;
 import com.github.claudecodegui.provider.common.MessageCallback;
@@ -150,6 +150,13 @@ public class ClaudeMessageHandler implements MessageCallback {
         lastReportedError = error;
         textSegmentActive = false;
         thinkingSegmentActive = false;
+
+        // Reset thinking state if still active — same as onComplete() and handleStreamEnd()
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         state.setError(error);
         state.setBusy(false);
         state.setLoading(false);
@@ -175,13 +182,46 @@ public class ClaudeMessageHandler implements MessageCallback {
             streamEndedThisTurn = false;
             errorReportedThisTurn = false;
             lastReportedError = null;
+            // Safety net: ensure loading state is cleared even when stream_end
+            // was received normally.  handleStreamEnd() already calls
+            // notifyStateChange, but the async JCEF chain may drop it.
+            // This redundant call is harmless (idempotent) and prevents the UI
+            // from getting stuck in "responding" state.
+            state.setBusy(false);
+            state.setLoading(false);
+            callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
             return;
         }
+
+        // If streaming was active but [STREAM_END] was never received (e.g., SDK error,
+        // timeout, or process interruption), we must explicitly end the stream here.
+        // Without this, the StreamMessageCoalescer remains in streamActive=true state,
+        // which causes SessionCallbackAdapter.onStateChange() to suppress showLoading(false),
+        // leaving the UI stuck in "responding" state forever.
+        // This mirrors the same pattern used in onError() above.
+        boolean wasStreaming = isStreaming;
+        isStreaming = false;
+        textSegmentActive = false;
+        thinkingSegmentActive = false;
+
+        // Reset thinking state if still active
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         errorReportedThisTurn = false;
         lastReportedError = null;
         state.setBusy(false);
         state.setLoading(false);
         state.updateLastModifiedTime();
+
+        if (wasStreaming) {
+            LOG.warn("onComplete called without prior stream_end — forcing stream cleanup");
+            callbackHandler.notifyMessageUpdate(state.getMessages());
+            callbackHandler.notifyStreamEnd();
+        }
+
         callbackHandler.notifyStateChange(state.isBusy(), state.isLoading(), state.getError());
     }
 
@@ -402,21 +442,32 @@ public class ClaudeMessageHandler implements MessageCallback {
                 return;
             }
 
-            // Find the last user message and update its raw field with the uuid
-            List<Message> messages = state.getMessages();
+            String userText = messageParser.extractMessageContent(userMsg);
+            if (userText == null || userText.isEmpty()) {
+                LOG.debug("User message from SDK has no text content, skipping uuid patch");
+                return;
+            }
+
+            // Find the latest unresolved matching user message and patch its uuid.
+            List<Message> messages = state.getMessagesReference();
             for (int i = messages.size() - 1; i >= 0; i--) {
                 Message msg = messages.get(i);
-                if (msg.type == Message.Type.USER && msg.raw != null) {
-                    // Check if this message already has a uuid
-                    if (!msg.raw.has("uuid")) {
-                        // Update the raw field with the uuid
-                        msg.raw.addProperty("uuid", uuid);
-                        LOG.info("Updated user message with uuid: " + uuid);
-                        // Notify frontend of the update
-                        callbackHandler.notifyMessageUpdate(messages);
-                        break;
-                    }
+                if (msg.type != Message.Type.USER) {
+                    continue;
                 }
+                if (!userText.equals(msg.content)) {
+                    continue;
+                }
+                if (msg.raw == null) {
+                    msg.raw = new JsonObject();
+                }
+                if (msg.raw.has("uuid") && !msg.raw.get("uuid").isJsonNull()) {
+                    continue;
+                }
+                msg.raw.addProperty("uuid", uuid);
+                LOG.info("Updated user message with uuid: " + uuid);
+                callbackHandler.notifyUserMessageUuidPatched(msg.content != null ? msg.content : "", uuid);
+                break;
             }
         } catch (Exception e) {
             LOG.warn("Failed to parse user message from SDK: " + e.getMessage());
@@ -584,6 +635,16 @@ public class ClaudeMessageHandler implements MessageCallback {
         streamEndedThisTurn = true;
         textSegmentActive = false;
         thinkingSegmentActive = false;
+
+        // Reset thinking state — stream end is the definitive boundary for a turn.
+        // If thinking was active when the stream ended (e.g., extended thinking without
+        // subsequent content), it must be cleared here to prevent the frontend from being
+        // stuck in "thinking" state.
+        if (isThinking) {
+            isThinking = false;
+            callbackHandler.notifyThinkingStatusChanged(false);
+        }
+
         // After streaming ends, send a final message update to ensure the message list is in sync
         callbackHandler.notifyMessageUpdate(state.getMessages());
         callbackHandler.notifyStreamEnd();

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
+import type { DiffThemeMode } from '../../../utils/diffTheme';
 
 // Preset colors (module-level constants to avoid recreating on each render)
 const DARK_PRESETS = [
@@ -95,6 +96,8 @@ export interface AppearanceTabProps {
   onChatBgColorChange?: (color: string) => void;
   userMsgColor?: string;
   onUserMsgColorChange?: (color: string) => void;
+  diffTheme?: DiffThemeMode;
+  onDiffThemeChange?: (theme: DiffThemeMode) => void;
 }
 
 const AppearanceTab = ({
@@ -107,6 +110,8 @@ const AppearanceTab = ({
   onChatBgColorChange = () => {},
   userMsgColor = '',
   onUserMsgColorChange = () => {},
+  diffTheme = 'follow',
+  onDiffThemeChange = () => {},
 }: AppearanceTabProps) => {
   const { t, i18n } = useTranslation();
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -192,6 +197,28 @@ const AppearanceTab = ({
   };
 
   const currentLanguage = i18n.language || 'zh';
+  const diffThemeOptions: Array<{ value: DiffThemeMode; label: string; desc: string }> = [
+    {
+      value: 'follow',
+      label: t('settings.basic.diffTheme.follow'),
+      desc: t('settings.basic.diffTheme.followDesc'),
+    },
+    {
+      value: 'editor',
+      label: t('settings.basic.diffTheme.editor'),
+      desc: t('settings.basic.diffTheme.editorDesc'),
+    },
+    {
+      value: 'light',
+      label: t('settings.basic.diffTheme.light'),
+      desc: t('settings.basic.diffTheme.lightDesc'),
+    },
+    {
+      value: 'soft-dark',
+      label: t('settings.basic.diffTheme.softDark'),
+      desc: t('settings.basic.diffTheme.softDarkDesc'),
+    },
+  ];
 
   const languageOptions = [
     { value: 'zh', label: 'settings.basic.language.simplifiedChinese' },
@@ -202,6 +229,7 @@ const AppearanceTab = ({
     { value: 'fr', label: 'settings.basic.language.french' },
     { value: 'ja', label: 'settings.basic.language.japanese' },
     { value: 'ru', label: 'settings.basic.language.russian' },
+    { value: 'ko', label: 'settings.basic.language.korean' },
   ];
 
   const handleLanguageChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -305,6 +333,26 @@ const AppearanceTab = ({
           <span className="codicon codicon-info" />
           <span>{t('settings.basic.editorFont.hint')}</span>
         </small>
+      </div>
+
+      {/* Diff theme */}
+      <div className={styles.themeSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-diff" />
+          <span className={styles.fieldLabel}>{t('settings.basic.diffTheme.label')}</span>
+        </div>
+
+        <select
+          className={styles.languageSelect}
+          value={diffTheme}
+          onChange={(e) => onDiffThemeChange(e.target.value as DiffThemeMode)}
+        >
+          {diffThemeOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label} — {option.desc}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Chat background color */}

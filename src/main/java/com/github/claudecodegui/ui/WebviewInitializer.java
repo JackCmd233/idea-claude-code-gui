@@ -1,8 +1,9 @@
 package com.github.claudecodegui.ui;
 
-import com.github.claudecodegui.ClaudeCodeGuiBundle;
 import com.github.claudecodegui.bridge.NodeDetector;
-import com.github.claudecodegui.handler.HandlerContext;
+import com.github.claudecodegui.handler.core.HandlerContext;
+import com.github.claudecodegui.i18n.ClaudeCodeGuiBundle;
+import com.github.claudecodegui.model.NodeDetectionResult;
 import com.github.claudecodegui.provider.claude.ClaudeSDKBridge;
 import com.github.claudecodegui.provider.codex.CodexSDKBridge;
 import com.github.claudecodegui.startup.BridgePreloader;
@@ -17,12 +18,14 @@ import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.ui.jcef.JBCefBrowserBase;
 import com.intellij.ui.jcef.JBCefJSQuery;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.handler.CefLoadHandlerAdapter;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
@@ -71,26 +74,6 @@ public class WebviewInitializer {
     }
 
     /**
-     * If an ai-bridge directory exists under the project root, prefer using it.
-     */
-    public void overrideBridgePathIfAvailable() {
-        try {
-            String basePath = host.getProject().getBasePath();
-            if (basePath == null) return;
-            File bridgeDir = new File(basePath, "ai-bridge");
-            File channelManager = new File(bridgeDir, "channel-manager.js");
-            if (bridgeDir.exists() && bridgeDir.isDirectory() && channelManager.exists()) {
-                host.getClaudeSDKBridge().setSdkTestDir(bridgeDir.getAbsolutePath());
-                LOG.info("Overriding ai-bridge path to project directory: " + bridgeDir.getAbsolutePath());
-            } else {
-                LOG.info("Project ai-bridge not found, using default resolver");
-            }
-        } catch (Exception e) {
-            LOG.warn("Failed to override bridge path: " + e.getMessage());
-        }
-    }
-
-    /**
      * Create and configure UI components (browser, JS bridge, drag-and-drop).
      */
     public void createUIComponents() {
@@ -109,7 +92,7 @@ public class WebviewInitializer {
                 if (ready) {
                     reinitializeAfterExtraction();
                 } else {
-                    ApplicationManager.getApplication().invokeLater(this::showErrorPanel);
+                    invokeLaterForToolWindow(this::showErrorPanel);
                 }
             });
             return;
@@ -149,7 +132,7 @@ public class WebviewInitializer {
                     if (ready) {
                         reinitializeAfterExtraction();
                     } else {
-                        ApplicationManager.getApplication().invokeLater(this::showErrorPanel);
+                        invokeLaterForToolWindow(this::showErrorPanel);
                     }
                 });
                 return;
@@ -459,11 +442,20 @@ public class WebviewInitializer {
         LOG.info("[ClaudeSDKToolWindow] Showing loading panel while bridge extracts...");
     }
 
+    private void invokeLaterForToolWindow(@NotNull Runnable runnable) {
+        Project project = this.host.getProject();
+        if (project != null && !project.isDisposed()) {
+            ToolWindowManager.getInstance(project).invokeLater(runnable);
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(runnable);
+    }
+
     /**
      * Reinitialize UI after bridge extraction completes.
      */
     private void reinitializeAfterExtraction() {
-        ApplicationManager.getApplication().invokeLater(() -> {
+        invokeLaterForToolWindow(() -> {
             LOG.info("[ClaudeSDKToolWindow] Bridge extraction complete, reinitializing UI...");
             JPanel mainPanel = host.getMainPanel();
             mainPanel.removeAll();
@@ -482,7 +474,7 @@ public class WebviewInitializer {
 
         if (attempt >= MAX_RETRIES) {
             LOG.warn("[ClaudeSDKToolWindow] All " + MAX_RETRIES + " retry attempts failed after extraction completion");
-            ApplicationManager.getApplication().invokeLater(this::showErrorPanel);
+            invokeLaterForToolWindow(this::showErrorPanel);
             return;
         }
 
@@ -496,7 +488,7 @@ public class WebviewInitializer {
                 Thread.currentThread().interrupt();
             }
         }).thenRun(() -> {
-            ApplicationManager.getApplication().invokeLater(() -> {
+            invokeLaterForToolWindow(() -> {
                 if (host.getClaudeSDKBridge().checkEnvironment()) {
                     LOG.info("[ClaudeSDKToolWindow] Retry attempt " + (attempt + 1) + " succeeded after extraction completion");
                     reinitializeAfterExtraction();
@@ -511,27 +503,49 @@ public class WebviewInitializer {
      * Handle Node.js path save from the error panel input.
      */
     public void handleNodePathSave(String manualPath) {
-        ClaudeSDKBridge claudeSDKBridge = host.getClaudeSDKBridge();
-        CodexSDKBridge codexSDKBridge = host.getCodexSDKBridge();
-        JPanel mainPanel = host.getMainPanel();
+        ClaudeSDKBridge claudeSDKBridge = this.host.getClaudeSDKBridge();
+        CodexSDKBridge codexSDKBridge = this.host.getCodexSDKBridge();
+        JPanel mainPanel = this.host.getMainPanel();
 
         try {
             PropertiesComponent props = PropertiesComponent.getInstance();
 
             if (manualPath == null || manualPath.isEmpty()) {
+                // Clear saved path and trigger auto-detection
                 props.unsetValue(NODE_PATH_PROPERTY_KEY);
                 claudeSDKBridge.setNodeExecutable(null);
                 codexSDKBridge.setNodeExecutable(null);
-                LOG.info("Cleared manual Node.js path");
+                LOG.info("Cleared manual Node.js path, triggering auto-detection");
+
+                NodeDetectionResult detected = claudeSDKBridge.detectNodeWithDetails();
+                if (detected != null && detected.isFound() && detected.getNodePath() != null) {
+                    String detectedPath = detected.getNodePath();
+                    props.setValue(NODE_PATH_PROPERTY_KEY, detectedPath);
+                    claudeSDKBridge.verifyAndCacheNodePath(detectedPath);
+                    codexSDKBridge.setNodeExecutable(detectedPath);
+                    LOG.info("Auto-detected and saved Node.js path: " + detectedPath);
+                }
             } else {
-                props.setValue(NODE_PATH_PROPERTY_KEY, manualPath);
-                claudeSDKBridge.setNodeExecutable(manualPath);
-                codexSDKBridge.setNodeExecutable(manualPath);
-                claudeSDKBridge.verifyAndCacheNodePath(manualPath);
-                LOG.info("Saved manual Node.js path: " + manualPath);
+                // Verify before saving to avoid caching invalid path
+                NodeDetectionResult result = claudeSDKBridge.verifyAndCacheNodePath(manualPath);
+                if (result != null && result.isFound()) {
+                    // Only save if verification succeeds
+                    props.setValue(NODE_PATH_PROPERTY_KEY, manualPath);
+                    claudeSDKBridge.setNodeExecutable(manualPath);
+                    codexSDKBridge.setNodeExecutable(manualPath);
+                    LOG.info("Saved manual Node.js path: " + manualPath);
+                } else {
+                    // Verification failed, show error and don't save invalid path
+                    String errorMsg = result != null ? result.getErrorMessage() : "Unknown error";
+                    LOG.warn("Node.js path verification failed: " + manualPath + " - " + errorMsg);
+                    JOptionPane.showMessageDialog(mainPanel,
+                        "Node.js path verification failed: " + errorMsg + "\n\nPath not saved.",
+                        "Invalid Node.js Path", JOptionPane.WARNING_MESSAGE);
+                    return; // Don't reinitialize UI, let user try again
+                }
             }
 
-            ApplicationManager.getApplication().invokeLater(() -> {
+            invokeLaterForToolWindow(() -> {
                 mainPanel.removeAll();
                 createUIComponents();
                 mainPanel.revalidate();

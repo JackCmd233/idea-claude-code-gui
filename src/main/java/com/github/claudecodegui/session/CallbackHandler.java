@@ -1,6 +1,6 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.ClaudeSession;
+import com.github.claudecodegui.session.ClaudeSession;
 import com.github.claudecodegui.permission.PermissionRequest;
 
 import java.util.List;
@@ -137,6 +137,15 @@ public class CallbackHandler {
     public void notifyUsageUpdate(int usedTokens, int maxTokens) {
         if (callback != null) {
             callback.onUsageUpdate(usedTokens, maxTokens);
+        }
+    }
+
+    /**
+     * Notify that a specific message received its provider UUID.
+     */
+    public void notifyUserMessageUuidPatched(String content, String uuid) {
+        if (callback != null) {
+            callback.onUserMessageUuidPatched(content, uuid);
         }
     }
 }

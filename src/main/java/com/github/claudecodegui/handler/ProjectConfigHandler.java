@@ -1,6 +1,8 @@
 package com.github.claudecodegui.handler;
 
-import com.github.claudecodegui.CodemossSettingsService;
+import com.github.claudecodegui.handler.core.HandlerContext;
+
+import com.github.claudecodegui.settings.CodemossSettingsService;
 import com.github.claudecodegui.action.SendShortcutSync;
 import com.github.claudecodegui.provider.claude.ClaudeHistoryReader;
 import com.github.claudecodegui.provider.codex.CodexHistoryReader;
@@ -339,6 +341,84 @@ public class ProjectConfigHandler {
                 context.callJavaScript("window.onEditorFontConfigReceived", context.escapeJs(fontConfigJson)));
         } catch (Exception e) {
             LOG.error("[ProjectConfigHandler] Failed to get editor font config: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== AI Feature Toggle ====================
+
+    public void handleGetCommitGenerationEnabled() {
+        try {
+            boolean enabled = settingsService.getCommitGenerationEnabled();
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("commitGenerationEnabled", enabled);
+                context.callJavaScript("window.updateCommitGenerationEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        } catch (Exception e) {
+            LOG.error("[ProjectConfigHandler] Failed to get commit generation enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("commitGenerationEnabled", true);
+                context.callJavaScript("window.updateCommitGenerationEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        }
+    }
+
+    public void handleSetCommitGenerationEnabled(String content) {
+        try {
+            JsonObject json = gson.fromJson(content, JsonObject.class);
+            boolean enabled = json == null || !json.has("commitGenerationEnabled") || json.get("commitGenerationEnabled").isJsonNull()
+                || json.get("commitGenerationEnabled").getAsBoolean();
+            settingsService.setCommitGenerationEnabled(enabled);
+            LOG.info("[ProjectConfigHandler] Set commit generation enabled: " + enabled);
+            final boolean finalVal = enabled;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("commitGenerationEnabled", finalVal);
+                context.callJavaScript("window.updateCommitGenerationEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        } catch (Exception e) {
+            LOG.error("[ProjectConfigHandler] Failed to set commit generation enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() ->
+                context.callJavaScript("window.showError", context.escapeJs("保存 AI 生成 Commit 配置失败")));
+        }
+    }
+
+    public void handleGetStatusBarWidgetEnabled() {
+        try {
+            boolean enabled = settingsService.getStatusBarWidgetEnabled();
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("statusBarWidgetEnabled", enabled);
+                context.callJavaScript("window.updateStatusBarWidgetEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        } catch (Exception e) {
+            LOG.error("[ProjectConfigHandler] Failed to get status bar widget enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("statusBarWidgetEnabled", true);
+                context.callJavaScript("window.updateStatusBarWidgetEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        }
+    }
+
+    public void handleSetStatusBarWidgetEnabled(String content) {
+        try {
+            JsonObject json = gson.fromJson(content, JsonObject.class);
+            boolean enabled = json == null || !json.has("statusBarWidgetEnabled") || json.get("statusBarWidgetEnabled").isJsonNull()
+                || json.get("statusBarWidgetEnabled").getAsBoolean();
+            settingsService.setStatusBarWidgetEnabled(enabled);
+            LOG.info("[ProjectConfigHandler] Set status bar widget enabled: " + enabled);
+            final boolean finalVal = enabled;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject r = new JsonObject();
+                r.addProperty("statusBarWidgetEnabled", finalVal);
+                context.callJavaScript("window.updateStatusBarWidgetEnabled", context.escapeJs(gson.toJson(r)));
+            });
+        } catch (Exception e) {
+            LOG.error("[ProjectConfigHandler] Failed to set status bar widget enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() ->
+                context.callJavaScript("window.showError", context.escapeJs("保存状态栏配置失败")));
         }
     }
 

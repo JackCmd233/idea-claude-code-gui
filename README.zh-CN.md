@@ -1,6 +1,8 @@
 <div align="center">
 
-# CC GUI (原 Claude Code GUI)
+# CC GUI（Claude or Codex）
+
+> 原名：Claude Code GUI
 
 <img width="120" alt="Image" src="./docs/images/idea-claude-code-gui-logo.png" />
 
@@ -261,6 +263,14 @@ MIT
 ## AtomGit
 
 https://atomgit.com/zhukunpenglinyutong/idea-claude-code-gui
+
+---
+
+## 友链
+
+感谢 [LINUX DO](https://linux.do/) 用户的支持与反馈
+
+感谢[AtomGit](https://atomgit.com/zhukunpenglinyutong/idea-claude-code-gui)平台G-Star认证
 
 ---
 

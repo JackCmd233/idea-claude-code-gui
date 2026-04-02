@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProviderConfig } from '../../../types/provider';
+import { SPECIAL_PROVIDER_IDS } from '../../../types/provider';
+import { writeClaudeModelMapping } from '../../../utils/claudeModelMapping';
 
 const sendToJava = (message: string) => {
   if (window.sendToJava) {
@@ -46,32 +48,18 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
 
   // Sync active provider model mapping to localStorage
   const syncActiveProviderModelMapping = useCallback((provider?: ProviderConfig | null) => {
-    if (typeof window === 'undefined' || !window.localStorage) return;
     if (!provider || !provider.settingsConfig || !provider.settingsConfig.env) {
-      try {
-        window.localStorage.removeItem('claude-model-mapping');
-      } catch {
-        // ignore
-      }
+      writeClaudeModelMapping({});
       return;
     }
     const env = provider.settingsConfig.env as Record<string, any>;
     const mapping = {
       main: env.ANTHROPIC_MODEL ?? '',
-      haiku: env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? '',
+      haiku: env.ANTHROPIC_SMALL_FAST_MODEL ?? env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? '',
       sonnet: env.ANTHROPIC_DEFAULT_SONNET_MODEL ?? '',
       opus: env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? '',
     };
-    const hasValue = Object.values(mapping).some((v) => v && String(v).trim().length > 0);
-    try {
-      if (hasValue) {
-        window.localStorage.setItem('claude-model-mapping', JSON.stringify(mapping));
-      } else {
-        window.localStorage.removeItem('claude-model-mapping');
-      }
-    } catch {
-      // ignore
-    }
+    writeClaudeModelMapping(mapping);
   }, []);
 
   // Load provider list
@@ -87,6 +75,8 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
       const active = providersList.find((p) => p.isActive);
       if (active) {
         syncActiveProviderModelMapping(active);
+      } else {
+        syncActiveProviderModelMapping(null);
       }
       setLoading(false);
     },
@@ -196,6 +186,12 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
   const handleSwitchProvider = useCallback(
     (id: string) => {
       const data = { id };
+      if (id === SPECIAL_PROVIDER_IDS.DISABLED) {
+        syncActiveProviderModelMapping(null);
+        sendToJava(`switch_provider:${JSON.stringify(data)}`);
+        setLoading(true);
+        return;
+      }
       const target = providers.find((p) => p.id === id);
       if (target) {
         syncActiveProviderModelMapping(target);

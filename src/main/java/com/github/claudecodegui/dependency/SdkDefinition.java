@@ -16,6 +16,7 @@ public enum SdkDefinition {
         "@anthropic-ai/claude-agent-sdk",
         "^0.2.58",
         Arrays.asList("@anthropic-ai/sdk", "@anthropic-ai/bedrock-sdk"),
+        Arrays.asList("0.2.88", "0.2.81", "0.2.58"),
         "Claude AI 提供商所需，包含 Agent SDK 和 Bedrock 支持。"
     ),
 
@@ -25,6 +26,7 @@ public enum SdkDefinition {
         "@openai/codex-sdk",
         "latest",
         Collections.emptyList(),
+        Arrays.asList("0.117.0", "0.116.0", "0.115.0"),
         "Codex AI 提供商所需。"
     );
 
@@ -33,15 +35,17 @@ public enum SdkDefinition {
     private final String npmPackage;
     private final String version;
     private final List<String> dependencies;
+    private final List<String> fallbackVersions;
     private final String description;
 
     SdkDefinition(String id, String displayName, String npmPackage, String version,
-                  List<String> dependencies, String description) {
+                  List<String> dependencies, List<String> fallbackVersions, String description) {
         this.id = id;
         this.displayName = displayName;
         this.npmPackage = npmPackage;
         this.version = version;
         this.dependencies = dependencies;
+        this.fallbackVersions = fallbackVersions;
         this.description = description;
     }
 
@@ -63,6 +67,10 @@ public enum SdkDefinition {
 
     public List<String> getDependencies() {
         return dependencies;
+    }
+
+    public List<String> getFallbackVersions() {
+        return fallbackVersions;
     }
 
     public String getDescription() {

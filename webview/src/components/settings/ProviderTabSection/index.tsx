@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProviderConfig, CodexProviderConfig } from '../../../types/provider';
 import { STORAGE_KEYS } from '../../../types/provider';
-import type { ClaudeConfig } from '../ConfigInfoDisplay';
 import ProviderManageSection from '../ProviderManageSection';
 import CodexProviderSection from '../CodexProviderSection';
 import CustomModelDialog from '../CustomModelDialog';
@@ -12,8 +11,6 @@ import styles from './style.module.less';
 interface ProviderTabSectionProps {
   currentProvider: 'claude' | 'codex' | string;
   // Claude provider props
-  claudeConfig: ClaudeConfig | null;
-  claudeConfigLoading: boolean;
   providers: ProviderConfig[];
   loading: boolean;
   onAddProvider: () => void;
@@ -27,14 +24,13 @@ interface ProviderTabSectionProps {
   onEditCodexProvider: (provider: CodexProviderConfig) => void;
   onDeleteCodexProvider: (provider: CodexProviderConfig) => void;
   onSwitchCodexProvider: (id: string) => void;
+  onRevokeCodexLocalConfigAuthorization: (fallbackProviderId?: string) => void;
   // Shared
   addToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 const ProviderTabSection = ({
   currentProvider,
-  claudeConfig,
-  claudeConfigLoading,
   providers,
   loading,
   onAddProvider,
@@ -47,6 +43,7 @@ const ProviderTabSection = ({
   onEditCodexProvider,
   onDeleteCodexProvider,
   onSwitchCodexProvider,
+  onRevokeCodexLocalConfigAuthorization,
   addToast,
 }: ProviderTabSectionProps) => {
   const { t } = useTranslation();
@@ -131,8 +128,6 @@ const ProviderTabSection = ({
           </button>
         </div>
         <ProviderManageSection
-          claudeConfig={claudeConfig}
-          claudeConfigLoading={claudeConfigLoading}
           providers={providers}
           loading={loading}
           onAddProvider={onAddProvider}
@@ -174,6 +169,7 @@ const ProviderTabSection = ({
           onEditCodexProvider={onEditCodexProvider}
           onDeleteCodexProvider={onDeleteCodexProvider}
           onSwitchCodexProvider={onSwitchCodexProvider}
+          onRevokeCodexLocalConfigAuthorization={onRevokeCodexLocalConfigAuthorization}
           showHeader={false}
         />
       </div>

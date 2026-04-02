@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CodexProviderConfig } from '../../../types/provider';
+import { SPECIAL_PROVIDER_IDS } from '../../../types/provider';
 import { sendToJava } from '../../../utils/bridge';
 import { useDragSort } from '../hooks/useDragSort';
+import sharedStyles from '../ProviderList/style.module.less';
 import styles from './style.module.less';
 
 interface CodexProviderSectionProps {
@@ -12,6 +14,7 @@ interface CodexProviderSectionProps {
   onEditCodexProvider: (provider: CodexProviderConfig) => void;
   onDeleteCodexProvider: (provider: CodexProviderConfig) => void;
   onSwitchCodexProvider: (id: string) => void;
+  onRevokeCodexLocalConfigAuthorization: (fallbackProviderId?: string) => void;
   showHeader?: boolean;
 }
 
@@ -22,13 +25,23 @@ const CodexProviderSection = ({
   onEditCodexProvider,
   onDeleteCodexProvider,
   onSwitchCodexProvider,
+  onRevokeCodexLocalConfigAuthorization,
   showHeader = true,
 }: CodexProviderSectionProps) => {
   const { t } = useTranslation();
 
+  const [showCliLoginConfirm, setShowCliLoginConfirm] = useState(false);
+  const [showCliLoginDisableConfirm, setShowCliLoginDisableConfirm] = useState(false);
+
   const onSort = useCallback((orderedIds: string[]) => {
     sendToJava('sort_codex_providers', { orderedIds });
   }, []);
+
+  // Filter out CLI Login provider from drag-sort list
+  const regularProviders = useMemo(
+    () => codexProviders.filter((p) => p.id !== SPECIAL_PROVIDER_IDS.CODEX_CLI_LOGIN),
+    [codexProviders]
+  );
 
   const {
     localItems: localProviders,
@@ -40,9 +53,15 @@ const CodexProviderSection = ({
     handleDrop,
     handleDragEnd,
   } = useDragSort({
-    items: codexProviders,
+    items: regularProviders,
     onSort,
   });
+
+  const cliLoginProvider = useMemo(
+    () => codexProviders.find((p) => p.id === SPECIAL_PROVIDER_IDS.CODEX_CLI_LOGIN),
+    [codexProviders]
+  );
+  const isCliLoginActive = cliLoginProvider?.isActive === true;
 
   return (
     <div className={styles.configSection}>
@@ -51,6 +70,74 @@ const CodexProviderSection = ({
           <h3 className={styles.sectionTitle}>{t('settings.codexProvider.title')}</h3>
           <p className={styles.sectionDesc}>{t('settings.codexProvider.description')}</p>
         </>
+      )}
+
+      {/* CLI Login authorize confirm dialog */}
+      {showCliLoginConfirm && (
+        <div className={sharedStyles.warningOverlay}>
+          <div className={sharedStyles.warningDialog}>
+            <div className={sharedStyles.warningTitle}>
+              <span className="codicon codicon-key" />
+              {t('settings.codexProvider.dialog.cliLoginAuthorizeTitle')}
+            </div>
+            <div className={sharedStyles.warningContent}>
+              {t('settings.codexProvider.dialog.cliLoginAuthorizeMessage')}
+              <br />
+              <br />
+              {t('settings.codexProvider.dialog.cliLoginAuthorizeDetail')}
+            </div>
+            <div className={sharedStyles.warningActions}>
+              <button
+                className={sharedStyles.btnSecondary}
+                onClick={() => setShowCliLoginConfirm(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className={sharedStyles.btnPrimary}
+                onClick={() => {
+                  setShowCliLoginConfirm(false);
+                  onSwitchCodexProvider(SPECIAL_PROVIDER_IDS.CODEX_CLI_LOGIN);
+                }}
+              >
+                {t('settings.provider.authorizeAndEnable')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLI Login disable confirm dialog */}
+      {showCliLoginDisableConfirm && (
+        <div className={sharedStyles.warningOverlay}>
+          <div className={sharedStyles.warningDialog}>
+            <div className={sharedStyles.warningTitle}>
+              <span className="codicon codicon-circle-slash" />
+              {t('settings.codexProvider.dialog.cliLoginDisableTitle')}
+            </div>
+            <div className={sharedStyles.warningContent}>
+              {t('settings.codexProvider.dialog.cliLoginDisableMessage')}
+            </div>
+            <div className={sharedStyles.warningActions}>
+              <button
+                className={sharedStyles.btnSecondary}
+                onClick={() => setShowCliLoginDisableConfirm(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className={sharedStyles.btnDanger}
+                onClick={() => {
+                  setShowCliLoginDisableConfirm(false);
+                  const firstRegular = regularProviders[0];
+                  onRevokeCodexLocalConfigAuthorization(firstRegular?.id);
+                }}
+              >
+                {t('settings.provider.revokeAuthorization')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {codexLoading && (
@@ -62,22 +149,65 @@ const CodexProviderSection = ({
 
       {!codexLoading && (
         <div className={styles.providerListContainer}>
-          <div className={styles.providerListHeader}>
-            <h4>{t('settings.provider.allProviders')}</h4>
-            <button className="btn btn-primary" onClick={onAddCodexProvider}>
-              <span className="codicon codicon-add" />
-              {t('common.add')}
-            </button>
+          <div className={sharedStyles.header}>
+            <h4 className={sharedStyles.title}>{t('settings.provider.allProviders')}</h4>
+            <div className={sharedStyles.actions}>
+              <button
+                className={sharedStyles.btnPrimary}
+                onClick={onAddCodexProvider}
+              >
+                <span className="codicon codicon-add" />
+                {t('common.add')}
+              </button>
+            </div>
           </div>
 
-          <div className={styles.providerList}>
+          <div className={sharedStyles.list}>
+            {/* CLI Login virtual provider card (pinned at top) */}
+            {cliLoginProvider && (
+              <div
+                className={`${sharedStyles.card} ${isCliLoginActive ? sharedStyles.active : ''} ${sharedStyles.localProviderCard}`}
+              >
+                <div className={sharedStyles.cardInfo}>
+                  <div className={sharedStyles.name}>
+                    <span className="codicon codicon-key" style={{ marginRight: '8px' }} />
+                    {t('settings.codexProvider.dialog.cliLoginProviderName')}
+                  </div>
+                  <div className={sharedStyles.website} title={t('settings.codexProvider.dialog.cliLoginProviderDescription')}>
+                    {t('settings.codexProvider.dialog.cliLoginProviderDescription')}
+                  </div>
+                </div>
+
+                <div className={sharedStyles.cardActions}>
+                  {isCliLoginActive ? (
+                    <button
+                      className={sharedStyles.revokeButton}
+                      onClick={() => setShowCliLoginDisableConfirm(true)}
+                    >
+                      <span className="codicon codicon-circle-slash" />
+                      {t('settings.provider.revokeAuthorization')}
+                    </button>
+                  ) : (
+                    <button
+                      className={sharedStyles.useButton}
+                      onClick={() => setShowCliLoginConfirm(true)}
+                    >
+                      <span className="codicon codicon-play" />
+                      {t('settings.provider.authorizeAndEnable')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Regular providers (drag-sortable) */}
             {localProviders.length > 0 ? (
               localProviders.map((provider) => (
                 <div
                   key={provider.id}
                   className={[
-                    styles.providerCard,
-                    provider.isActive && styles.active,
+                    sharedStyles.card,
+                    provider.isActive && sharedStyles.active,
                     draggedProviderId === provider.id && styles.dragging,
                     dragOverProviderId === provider.id && styles.dragOver,
                   ].filter(Boolean).join(' ')}
@@ -88,25 +218,25 @@ const CodexProviderSection = ({
                   onDrop={(e) => handleDrop(e, provider.id)}
                   onDragEnd={handleDragEnd}
                 >
-                  <div className={styles.dragHandle} title={t('settings.provider.dragToSort')}>
+                  <div className={sharedStyles.dragHandle} title={t('settings.provider.dragToSort')}>
                     <span className="codicon codicon-gripper" />
                   </div>
-                  <div className={styles.providerInfo}>
-                    <div className={styles.providerName}>{provider.name}</div>
+                  <div className={sharedStyles.cardInfo}>
+                    <div className={sharedStyles.name}>{provider.name}</div>
                     {provider.remark && (
-                      <div className={styles.providerRemark}>{provider.remark}</div>
+                      <div className={sharedStyles.website}>{provider.remark}</div>
                     )}
                   </div>
 
-                  <div className={styles.providerActions}>
+                  <div className={sharedStyles.cardActions}>
                     {provider.isActive ? (
-                      <div className={styles.activeBadge}>
+                      <div className={sharedStyles.activeBadge}>
                         <span className="codicon codicon-check" />
                         {t('settings.provider.inUse')}
                       </div>
                     ) : (
                       <button
-                        className={styles.useButton}
+                        className={sharedStyles.useButton}
                         onClick={() => onSwitchCodexProvider(provider.id)}
                       >
                         <span className="codicon codicon-play" />
@@ -114,16 +244,18 @@ const CodexProviderSection = ({
                       </button>
                     )}
 
-                    <div className={styles.actionButtons}>
+                    <div className={sharedStyles.divider} />
+
+                    <div className={sharedStyles.actionButtons}>
                       <button
-                        className={styles.iconBtn}
+                        className={sharedStyles.iconBtn}
                         onClick={() => onEditCodexProvider(provider)}
                         title={t('common.edit')}
                       >
                         <span className="codicon codicon-edit" />
                       </button>
                       <button
-                        className={styles.iconBtn}
+                        className={sharedStyles.iconBtn}
                         onClick={() => onDeleteCodexProvider(provider)}
                         title={t('common.delete')}
                       >
@@ -133,12 +265,12 @@ const CodexProviderSection = ({
                   </div>
                 </div>
               ))
-            ) : (
-              <div className={styles.emptyState}>
+            ) : !cliLoginProvider ? (
+              <div className={sharedStyles.emptyState}>
                 <span className="codicon codicon-info" />
                 <p>{t('settings.codexProvider.emptyProvider')}</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}

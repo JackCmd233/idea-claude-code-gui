@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CodexProviderConfig } from '../../types/provider';
-import { type ClaudeConfig } from './ConfigInfoDisplay';
 import { ToastContainer } from '../Toast';
 
 // Import split-out components
@@ -93,6 +92,8 @@ const SettingsView = ({
     setChatBgColor,
     userMsgColor,
     setUserMsgColor,
+    diffTheme,
+    setDiffTheme,
   } = useSettingsThemeSync();
 
   // Basic settings actions: node path, working dir, streaming, shortcuts, sound, commit prompt, etc.
@@ -148,6 +149,12 @@ const SettingsView = ({
     handleTestSound,
     handleBrowseSound,
     handleSaveCommitPrompt,
+    commitGenerationEnabled,
+    setCommitGenerationEnabled,
+    handleCommitGenerationEnabledChange,
+    statusBarWidgetEnabled,
+    setStatusBarWidgetEnabled,
+    handleStatusBarWidgetEnabledChange,
   } = useSettingsBasicActions({
     streamingEnabledProp,
     onStreamingEnabledChangeProp,
@@ -156,10 +163,6 @@ const SettingsView = ({
     autoOpenFileEnabledProp,
     onAutoOpenFileEnabledChangeProp,
   });
-
-  // Current Claude CLI configuration (from ~/.claude/settings.json)
-  const [claudeConfig, setClaudeConfig] = useState<ClaudeConfig | null>(null);
-  const [claudeConfigLoading, setClaudeConfigLoading] = useState(false);
 
   // Use provider management hook
   const {
@@ -199,6 +202,7 @@ const SettingsView = ({
     handleCloseCodexProviderDialog,
     handleSaveCodexProvider,
     handleSwitchCodexProvider,
+    handleRevokeCodexLocalConfigAuthorization,
     handleDeleteCodexProvider,
     confirmDeleteCodexProvider,
     cancelDeleteCodexProvider,
@@ -243,8 +247,6 @@ const SettingsView = ({
 
   // Register window callbacks for Java bridge communication
   useSettingsWindowCallbacks({
-    setClaudeConfig,
-    setClaudeConfigLoading,
     setNodePath,
     setNodeVersion,
     setMinNodeVersion,
@@ -283,6 +285,8 @@ const SettingsView = ({
     setSoundOnlyWhenUnfocused,
     setSelectedSound,
     setCustomSoundPath,
+    setCommitGenerationEnabled,
+    setStatusBarWidgetEnabled,
   });
 
   // Save provider (wrapper function with validation logic)
@@ -415,8 +419,20 @@ const SettingsView = ({
               onChatBgColorChange={setChatBgColor}
               userMsgColor={userMsgColor}
               onUserMsgColorChange={setUserMsgColor}
+              diffTheme={diffTheme}
+              onDiffThemeChange={setDiffTheme}
               diffExpandedByDefault={diffExpandedByDefault}
               onDiffExpandedByDefaultChange={setDiffExpandedByDefault}
+              commitGenerationEnabled={commitGenerationEnabled}
+              onCommitGenerationEnabledChange={(enabled) => {
+                handleCommitGenerationEnabledChange(enabled);
+                addToast(t('toast.restartRequired'), 'warning');
+              }}
+              statusBarWidgetEnabled={statusBarWidgetEnabled}
+              onStatusBarWidgetEnabledChange={(enabled) => {
+                handleStatusBarWidgetEnabledChange(enabled);
+                addToast(t('toast.restartRequired'), 'warning');
+              }}
               soundNotificationEnabled={soundNotificationEnabled}
               onSoundNotificationEnabledChange={handleSoundNotificationEnabledChange}
               soundOnlyWhenUnfocused={soundOnlyWhenUnfocused}
@@ -435,8 +451,6 @@ const SettingsView = ({
           <div style={{ display: currentTab === 'providers' ? 'block' : 'none' }}>
             <ProviderTabSection
               currentProvider={currentProvider}
-              claudeConfig={claudeConfig}
-              claudeConfigLoading={claudeConfigLoading}
               providers={providers}
               loading={loading}
               onAddProvider={handleAddProvider}
@@ -446,11 +460,12 @@ const SettingsView = ({
               codexProviders={codexProviders}
               codexLoading={codexLoading}
               onAddCodexProvider={handleAddCodexProvider}
-              onEditCodexProvider={handleEditCodexProvider}
-              onDeleteCodexProvider={handleDeleteCodexProvider}
-              onSwitchCodexProvider={handleSwitchCodexProvider}
-              addToast={addToast}
-            />
+                onEditCodexProvider={handleEditCodexProvider}
+                onDeleteCodexProvider={handleDeleteCodexProvider}
+                onSwitchCodexProvider={handleSwitchCodexProvider}
+                onRevokeCodexLocalConfigAuthorization={handleRevokeCodexLocalConfigAuthorization}
+                addToast={addToast}
+              />
           </div>
 
           {/* SDK dependency management */}

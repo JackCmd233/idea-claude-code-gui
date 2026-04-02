@@ -1,5 +1,6 @@
 package com.github.claudecodegui.bridge;
 
+import com.github.claudecodegui.settings.CodemossSettingsService;
 import com.github.claudecodegui.util.PlatformUtils;
 import com.github.claudecodegui.util.ShellExecutor;
 import com.intellij.openapi.diagnostic.Logger;
@@ -334,6 +335,12 @@ public class EnvironmentConfigurator {
         }
 
         try {
+            String accessMode = new CodemossSettingsService().getCodexRuntimeAccessMode();
+            if (CodemossSettingsService.CODEX_RUNTIME_ACCESS_INACTIVE.equals(accessMode)) {
+                LOG.debug("[Codex] Skipping env_key sync from ~/.codex/config.toml: local access is not authorized");
+                return;
+            }
+
             // 1. Find all env_key names from ~/.codex/config.toml
             Set<String> envKeyNames = parseCodexConfigEnvKeys();
             if (envKeyNames.isEmpty()) {

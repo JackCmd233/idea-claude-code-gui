@@ -4,8 +4,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import com.github.claudecodegui.ClaudeSession;
-import com.github.claudecodegui.CodemossSettingsService;
+import com.github.claudecodegui.session.ClaudeSession;
+import com.github.claudecodegui.settings.CodemossSettingsService;
+import com.github.claudecodegui.i18n.ClaudeCodeGuiBundle;
 import com.github.claudecodegui.dependency.DependencyManager;
 import com.github.claudecodegui.provider.common.BaseSDKBridge;
 import com.github.claudecodegui.provider.common.MessageCallback;
@@ -251,6 +252,20 @@ public class CodexSDKBridge extends BaseSDKBridge {
             final List<File> tempImageFiles = new ArrayList<>();  // Track temp images for cleanup
 
             try {
+                String accessMode = CodemossSettingsService.CODEX_RUNTIME_ACCESS_INACTIVE;
+                try {
+                    accessMode = new CodemossSettingsService().getCodexRuntimeAccessMode();
+                } catch (Exception e) {
+                    LOG.warn("[Codex] Failed to resolve runtime access mode before send: " + e.getMessage());
+                }
+                if (CodemossSettingsService.CODEX_RUNTIME_ACCESS_INACTIVE.equals(accessMode)) {
+                    String error = ClaudeCodeGuiBundle.message("error.codexLocalAccessNotAuthorized");
+                    result.success = false;
+                    result.error = error;
+                    callback.onError(error);
+                    return result;
+                }
+
                 String node = nodeDetector.findNodeExecutable();
                 File bridgeDir = getDirectoryResolver().findSdkDir();
 
@@ -281,9 +296,17 @@ public class CodexSDKBridge extends BaseSDKBridge {
                 stdinInput.addProperty("model", model != null ? model : "");
                 // Reasoning effort (thinking depth)
                 stdinInput.addProperty("reasoningEffort", reasoningEffort != null ? reasoningEffort : "medium");
-                // API configuration
-                stdinInput.addProperty("baseUrl", baseUrl != null ? baseUrl : "");
-                stdinInput.addProperty("apiKey", apiKey != null ? apiKey : "");
+
+                // API configuration — skip for CLI Login mode (uses native OAuth from ~/.codex/auth.json)
+                boolean isCodexCliLogin = isCodexCliLoginActive();
+                if (!isCodexCliLogin) {
+                    stdinInput.addProperty("baseUrl", baseUrl != null ? baseUrl : "");
+                    stdinInput.addProperty("apiKey", apiKey != null ? apiKey : "");
+                } else {
+                    stdinInput.addProperty("baseUrl", "");
+                    stdinInput.addProperty("apiKey", "");
+                    LOG.info("[Codex] CLI Login mode: skipping apiKey/baseUrl, using native OAuth tokens");
+                }
 
                 // Process attachments for Codex (images need to be saved as temp files)
                 // Codex SDK requires local file paths, not base64 data
@@ -787,5 +810,19 @@ public class CodexSDKBridge extends BaseSDKBridge {
             LOG.warn("[Codex] Failed to read Codex sandbox mode config: " + e.getMessage());
         }
         return defaultMode;
+    }
+
+    /**
+     * Check if Codex CLI Login provider is currently active by reading config.json directly.
+     */
+    private boolean isCodexCliLoginActive() {
+        try {
+            CodemossSettingsService settingsService = new CodemossSettingsService();
+            return CodemossSettingsService.CODEX_RUNTIME_ACCESS_CLI_LOGIN
+                    .equals(settingsService.getCodexRuntimeAccessMode());
+        } catch (Exception e) {
+            LOG.debug("[Codex] Failed to check CLI login status: " + e.getMessage());
+            return false;
+        }
     }
 }

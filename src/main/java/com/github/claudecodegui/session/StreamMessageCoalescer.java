@@ -1,7 +1,7 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.ClaudeSession;
-import com.github.claudecodegui.handler.HandlerContext;
+import com.github.claudecodegui.session.ClaudeSession;
+import com.github.claudecodegui.handler.core.HandlerContext;
 import com.github.claudecodegui.util.JsUtils;
 import com.github.claudecodegui.util.MessageJsonConverter;
 import com.intellij.openapi.application.ApplicationManager;
@@ -10,6 +10,7 @@ import com.intellij.ui.jcef.JBCefBrowser;
 import com.intellij.util.Alarm;
 
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * Coalesces streaming message updates to throttle webview pushes.
@@ -20,13 +21,43 @@ public class StreamMessageCoalescer {
 
     private static final Logger LOG = Logger.getInstance(StreamMessageCoalescer.class);
     private static final int UPDATE_INTERVAL_MS = 50;
+    private static final int LARGE_UPDATE_PAYLOAD_CHARS = 150_000;
+    private static final long SLOW_PAYLOAD_BUILD_MS = 25L;
+
+    // FIX: Adaptive throttling to prevent JCEF IPC saturation during long streams.
+    // When the full message JSON is large, V8 must parse the entire string literal
+    // on every executeJavaScript call.  At 50ms intervals with 200KB+ payloads,
+    // the renderer thread falls behind and enters a death spiral where IPC messages
+    // pile up and ALL JavaScript calls (including onContentDelta) are blocked.
+    //
+    // Strategy: during active streaming, scale the coalescing interval based on the
+    // last observed payload size.  Content updates still arrive via onContentDelta
+    // (tiny payloads, <1KB), so the user sees streaming text.  Only the full message
+    // list refresh (updateMessages) is throttled.
+    private static final int LARGE_PAYLOAD_THRESHOLD = 100_000;   // 100KB
+    private static final int MEDIUM_INTERVAL_MS = 500;             // 100-200KB
+    private static final int LARGE_INTERVAL_MS = 2_000;            // 200-500KB
+    private static final int XLARGE_INTERVAL_MS = 5_000;           // >500KB
+
+    // FIX: Heartbeat interval during streaming.  During tool execution phases
+    // (command execution, file operations, etc.), no content deltas or message
+    // updates arrive from the SDK.  Without a heartbeat, the frontend stall
+    // watchdog may falsely trigger and prematurely end the streaming state.
+    // This lightweight signal keeps the frontend watchdog alive.
+    private static final int HEARTBEAT_INTERVAL_MS = 10_000;       // 10s
 
     private final Object lock = new Object();
     private final Alarm updateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+    private final Alarm heartbeatAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
     private volatile boolean streamActive = false;
     private volatile boolean updateScheduled = false;
     private volatile long lastUpdateAtMs = 0L;
     private volatile long updateSequence = 0L;
+    // Written from the pooled thread in sendToWebView, read from EDT/schedulePush via
+    // effectiveIntervalMs().  Volatile guarantees visibility but not atomicity with the
+    // lock-protected fields.  This is intentional: a one-cycle stale read only means the
+    // interval adapts one push later — acceptable for a best-effort throttling heuristic.
+    private volatile int lastPayloadChars = 0;
     private volatile List<ClaudeSession.Message> pendingMessages = null;
     private volatile List<ClaudeSession.Message> lastSnapshot = null;
 
@@ -60,6 +91,11 @@ public class StreamMessageCoalescer {
             pendingMessages = snapshot;
         }
         schedulePush();
+        // Restart heartbeat timer: real data just arrived, so the next heartbeat
+        // should fire HEARTBEAT_INTERVAL_MS from now, not from the last heartbeat.
+        if (streamActive) {
+            startHeartbeat();
+        }
     }
 
     /**
@@ -69,14 +105,17 @@ public class StreamMessageCoalescer {
         synchronized (lock) {
             streamActive = true;
         }
+        startHeartbeat();
     }
 
     /**
      * Notify that a stream has ended.
      */
     public void onStreamEnd() {
+        heartbeatAlarm.cancelAllRequests();
         synchronized (lock) {
             streamActive = false;
+            lastPayloadChars = 0;  // Reset so post-stream flush uses normal interval
         }
     }
 
@@ -85,12 +124,14 @@ public class StreamMessageCoalescer {
      */
     public void resetStreamState() {
         updateAlarm.cancelAllRequests();
+        heartbeatAlarm.cancelAllRequests();
         synchronized (lock) {
             streamActive = false;
             updateScheduled = false;
             pendingMessages = null;
             lastSnapshot = null;
             lastUpdateAtMs = 0L;
+            lastPayloadChars = 0;
             ++updateSequence;
         }
     }
@@ -102,7 +143,7 @@ public class StreamMessageCoalescer {
     /**
      * Flush any pending messages immediately and optionally run a callback afterwards.
      */
-    public void flush(Runnable afterFlushOnEdt) {
+    public void flush(LongConsumer afterFlushOnEdt) {
         if (callbackTarget.isDisposed()) {
             return;
         }
@@ -119,7 +160,8 @@ public class StreamMessageCoalescer {
 
         if (snapshot == null) {
             if (afterFlushOnEdt != null) {
-                ApplicationManager.getApplication().invokeLater(afterFlushOnEdt);
+                final long finalSequence = sequence;
+                ApplicationManager.getApplication().invokeLater(() -> afterFlushOnEdt.accept(finalSequence));
             }
             return;
         }
@@ -137,6 +179,37 @@ public class StreamMessageCoalescer {
         } catch (Exception e) {
             LOG.warn("Failed to dispose stream message update alarm: " + e.getMessage());
         }
+        try {
+            heartbeatAlarm.cancelAllRequests();
+            heartbeatAlarm.dispose();
+        } catch (Exception e) {
+            LOG.warn("Failed to dispose heartbeat alarm: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Compute the effective coalescing interval.  During streaming, scale the
+     * interval based on the last observed payload size to prevent JCEF overload.
+     */
+    private int effectiveIntervalMs() {
+        if (!streamActive) {
+            return UPDATE_INTERVAL_MS;
+        }
+        int chars = lastPayloadChars;
+        int interval;
+        if (chars > 500_000) {
+            interval = XLARGE_INTERVAL_MS;
+        } else if (chars > 200_000) {
+            interval = LARGE_INTERVAL_MS;
+        } else if (chars > LARGE_PAYLOAD_THRESHOLD) {
+            interval = MEDIUM_INTERVAL_MS;
+        } else {
+            return UPDATE_INTERVAL_MS;
+        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("[AdaptiveThrottle] payload=" + chars + " chars → interval=" + interval + "ms");
+        }
+        return interval;
     }
 
     private void schedulePush() {
@@ -149,8 +222,9 @@ public class StreamMessageCoalescer {
             if (updateScheduled) {
                 return;
             }
+            int intervalMs = effectiveIntervalMs();
             long elapsed = System.currentTimeMillis() - lastUpdateAtMs;
-            delayMs = (int) Math.max(0L, UPDATE_INTERVAL_MS - elapsed);
+            delayMs = (int) Math.max(0L, intervalMs - elapsed);
             updateScheduled = true;
             ++updateSequence;
         }
@@ -187,7 +261,7 @@ public class StreamMessageCoalescer {
     private void sendToWebView(
             List<ClaudeSession.Message> messages,
             long sequence,
-            Runnable afterSendOnEdt
+            LongConsumer afterSendOnEdt
     ) {
         // Keep the snapshot for potential re-flush after webview reload/recreate
         synchronized (lock) {
@@ -195,19 +269,48 @@ public class StreamMessageCoalescer {
         }
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            final int payloadChars;
+            final long payloadBuildMs;
             final String escapedMessagesJson;
             try {
-                escapedMessagesJson = JsUtils.escapeJs(MessageJsonConverter.convertMessagesToJson(messages));
+                long buildStartedAt = System.nanoTime();
+                String messagesJson = MessageJsonConverter.convertMessagesToJson(messages);
+                payloadChars = messagesJson.length();
+                escapedMessagesJson = JsUtils.escapeJs(messagesJson);
+                payloadBuildMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - buildStartedAt);
+
+                // FIX: Record payload size for adaptive throttling
+                lastPayloadChars = payloadChars;
+
+                if (payloadChars >= LARGE_UPDATE_PAYLOAD_CHARS || payloadBuildMs >= SLOW_PAYLOAD_BUILD_MS) {
+                    LOG.info("[WebviewTransport] updateMessages payload chars=" + payloadChars
+                            + ", messages=" + messages.size()
+                            + ", buildMs=" + payloadBuildMs
+                            + ", sequence=" + sequence);
+                } else if (LOG.isDebugEnabled()) {
+                    LOG.debug("[WebviewTransport] updateMessages payload chars=" + payloadChars
+                            + ", messages=" + messages.size()
+                            + ", buildMs=" + payloadBuildMs
+                            + ", sequence=" + sequence);
+                }
             } catch (Exception e) {
                 LOG.warn("Failed to serialize messages for streaming update: " + e.getMessage(), e);
                 if (afterSendOnEdt != null) {
-                    ApplicationManager.getApplication().invokeLater(afterSendOnEdt);
+                    final long finalSequence = sequence;
+                    ApplicationManager.getApplication().invokeLater(() -> afterSendOnEdt.accept(finalSequence));
                 }
                 return;
             }
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (callbackTarget.isDisposed()) {
+                    // FIX: Still run afterSendOnEdt even when disposed, so that
+                    // onStreamEnd/showLoading(false) callbacks execute and clear
+                    // streaming state. Without this, a dispose race leaves the
+                    // frontend permanently stuck in "responding" state.
+                    if (afterSendOnEdt != null) {
+                        afterSendOnEdt.accept(sequence);
+                    }
                     return;
                 }
 
@@ -217,24 +320,67 @@ public class StreamMessageCoalescer {
                         // run the after-send callback (e.g. onStreamEnd cleanup)
                         // so the frontend is not stuck in streaming state.
                         if (afterSendOnEdt != null) {
-                            afterSendOnEdt.run();
+                            afterSendOnEdt.accept(sequence);
                         }
                         return;
                     }
                 }
 
-                callbackTarget.callJavaScript("updateMessages", escapedMessagesJson);
-                MessageJsonConverter.pushUsageUpdateFromMessages(
-                        messages,
-                        callbackTarget.getHandlerContext(),
-                        callbackTarget.getBrowser(),
-                        callbackTarget.isDisposed()
-                );
+                // FIX: Wrap callJavaScript in try-catch so that a JCEF failure
+                // (e.g., large payload rejection, disposed browser race) does not
+                // prevent afterSendOnEdt from running.  When afterSendOnEdt carries
+                // the onStreamEnd signal, failing to run it permanently freezes the UI.
+                try {
+                    callbackTarget.callJavaScript("updateMessages", escapedMessagesJson, String.valueOf(sequence));
+                    MessageJsonConverter.pushUsageUpdateFromMessages(
+                            messages,
+                            callbackTarget.getHandlerContext(),
+                            callbackTarget.getBrowser(),
+                            callbackTarget.isDisposed()
+                    );
+                } catch (Exception e) {
+                    LOG.warn("Failed to push updateMessages to webview (payload chars="
+                            + escapedMessagesJson.length() + "): " + e.getMessage(), e);
+                }
 
                 if (afterSendOnEdt != null) {
-                    afterSendOnEdt.run();
+                    afterSendOnEdt.accept(sequence);
                 }
             });
         });
+    }
+
+    // ===== Streaming heartbeat =====
+
+    /**
+     * Start (or restart) the periodic heartbeat during streaming.
+     * Sends a lightweight JS signal to the frontend to prevent the stall
+     * watchdog from falsely triggering during tool execution phases where
+     * no content deltas or message updates arrive from the SDK.
+     */
+    private void startHeartbeat() {
+        heartbeatAlarm.cancelAllRequests();
+        scheduleHeartbeat();
+    }
+
+    private void scheduleHeartbeat() {
+        if (!streamActive || callbackTarget.isDisposed()) {
+            return;
+        }
+        heartbeatAlarm.addRequest(() -> {
+            if (!streamActive || callbackTarget.isDisposed()) {
+                return;
+            }
+            try {
+                callbackTarget.callJavaScript("onStreamingHeartbeat");
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("[Heartbeat] Sent streaming heartbeat to frontend");
+                }
+            } catch (Exception e) {
+                LOG.warn("[Heartbeat] Failed to send heartbeat: " + e.getMessage());
+            }
+            // Schedule next heartbeat
+            scheduleHeartbeat();
+        }, HEARTBEAT_INTERVAL_MS);
     }
 }

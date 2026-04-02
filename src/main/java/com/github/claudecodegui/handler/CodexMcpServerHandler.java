@@ -1,5 +1,8 @@
 package com.github.claudecodegui.handler;
 
+import com.github.claudecodegui.handler.core.BaseMessageHandler;
+import com.github.claudecodegui.handler.core.HandlerContext;
+
 import com.github.claudecodegui.settings.CodexMcpServerManager;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -82,6 +85,13 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
     private void handleGetMcpServers() {
         CompletableFuture.runAsync(() -> {
             try {
+                if (!isCodexLocalConfigAuthorized()) {
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        callJavaScript("window.updateCodexMcpServers", escapeJs("[]"));
+                    });
+                    return;
+                }
+
                 List<JsonObject> servers = codexMcpServerManager.getMcpServers();
                 Gson gson = new Gson();
                 String serversJson = gson.toJson(servers);
@@ -112,6 +122,13 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
     private void handleGetMcpServerStatus() {
         CompletableFuture.runAsync(() -> {
             try {
+                if (!isCodexLocalConfigAuthorized()) {
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        callJavaScript("window.updateCodexMcpServerStatus", escapeJs("[]"));
+                    });
+                    return;
+                }
+
                 List<JsonObject> statusList = codexMcpServerManager.getMcpServerStatus();
                 Gson gson = new Gson();
                 String statusJson = gson.toJson(statusList);
@@ -145,6 +162,12 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
      */
     private void handleGetMcpServerTools(String content) {
         try {
+            if (!isCodexLocalConfigAuthorized()) {
+                Gson gson = new Gson();
+                sendToolsError("", com.github.claudecodegui.i18n.ClaudeCodeGuiBundle.message("error.codexLocalAccessNotAuthorized"), gson);
+                return;
+            }
+
             Gson gson = new Gson();
             JsonObject json = gson.fromJson(content, JsonObject.class);
             if (json == null || !json.has("serverId")) {
@@ -198,6 +221,15 @@ public class CodexMcpServerHandler extends BaseMessageHandler {
         ApplicationManager.getApplication().invokeLater(() ->
             callJavaScript("window.updateMcpServerTools", escapeJs(json))
         );
+    }
+
+    private boolean isCodexLocalConfigAuthorized() {
+        try {
+            return context.getSettingsService().isCodexLocalConfigAuthorized();
+        } catch (Exception e) {
+            LOG.warn("[CodexMcpServerHandler] Failed to read Codex local authorization state: " + e.getMessage());
+            return false;
+        }
     }
 
     /**

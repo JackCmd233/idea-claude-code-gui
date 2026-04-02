@@ -118,7 +118,8 @@
         "spanish": "Español",
         "french": "Français",
         "japanese": "日本語",
-        "russian": "Русский"
+        "russian": "Русский",
+        "korean": "한국어"
       },
       "nodePath": {
         "label": "Ruta de Node.js",
@@ -153,7 +154,7 @@
         "hint": "When enabled, AI responses will appear character by character in real-time, instead of waiting for the complete response. May consume more resources."
       },
       "autoOpenFile": {
-        "label": "Apertura automática de archivos",
+        "label": "Enviar ruta del archivo abierto",
         "enabled": "Activado",
         "disabled": "Desactivado",
         "hint": "Al activar, seleccionar un archivo en el árbol del proyecto enviará automáticamente su ruta al AI (nota: solo se envía la ruta del archivo, no su contenido). Al desactivar, se requiere acción manual."
@@ -354,6 +355,16 @@
       "localProviderName": "Local settings.json",
       "localProviderDescription": "Use configuration directly from ~/.claude/settings.json",
       "localProviderHelp": "When using local provider mode:\n• The plugin will not modify your ~/.claude/settings.json file\n• You need to manually manage your configurations\n• Make sure the file exists and contains valid JSON\n• Suitable for advanced users who prefer manual control",
+      "authorizeAndEnable": "Autorizar y habilitar",
+      "revokeAuthorization": "Revocar autorización",
+      "cliLoginProviderName": "Estado de inicio de sesión CLI",
+      "cliLoginProviderDescription": "Reutilizar el estado de inicio de sesión de Claude CLI que ya completó en la terminal",
+      "cliLoginAuthorizeTitle": "Autorizar estado de inicio de sesión CLI",
+      "cliLoginAuthorizeMessage": "Esto permitirá que el plugin use su sesión de inicio de sesión de Claude CLI para solicitudes API. Debe haber iniciado sesión a través de Claude CLI en su terminal.",
+      "cliLoginAuthorizeDetail": "El plugin delega la autenticación al flujo OAuth nativo del SDK de Claude. Puede revocar esta autorización en cualquier momento.",
+      "cliLoginDisableTitle": "Revocar autorización de inicio de sesión CLI",
+      "cliLoginDisableMessage": "Esto dejará de usar el estado de inicio de sesión CLI y dejará a Claude sin proveedor activo hasta que habilite explícitamente otro.",
+      "cliLoginAccountInfo": "Conectado como: {{email}}",
       "subscriptionTutorial": {
         "entry": "Tutorial de cuenta de suscripción",
         "dialogTitle": "Cómo usar una cuenta de suscripción",
@@ -498,6 +509,13 @@
         "modelIdPlaceholder": "Model ID (required, e.g., gpt-4o)",
         "modelLabelPlaceholder": "Display name (optional)",
         "modelDescPlaceholder": "Model description (optional)",
+        "cliLoginProviderName": "Inicio de sesion Codex CLI",
+        "cliLoginProviderDescription": "Usar credenciales de suscripcion de ChatGPT desde Codex CLI",
+        "cliLoginAuthorizeTitle": "Habilitar inicio de sesion Codex CLI",
+        "cliLoginAuthorizeMessage": "Esto limpiara su config.toml y usara las credenciales de suscripcion de ChatGPT de Codex CLI.",
+        "cliLoginAuthorizeDetail": "Asegurese de haber iniciado sesion mediante 'codex login' en su terminal. Su config.toml actual sera respaldada.",
+        "cliLoginDisableTitle": "Deshabilitar inicio de sesion Codex CLI",
+        "cliLoginDisableMessage": "Esto restaurara su config.toml anterior y cambiara a autenticacion por clave API.",
         "modelIdRequired": "Model ID is required",
         "modelIdInvalid": "Invalid model ID format (only letters, numbers, dots, hyphens, underscores, slashes and colons allowed)",
         "modelIdDuplicate": "Model ID already exists"
@@ -1318,7 +1336,7 @@
   },
   "error": {
     "providerNotConfigured": "Proveedor no configurado",
-    "providerNotConfiguredDesc": "No se ha configurado ningún proveedor de IA. Agrega una clave API en la configuración del proveedor antes de iniciar una conversación.",
-    "goToProviderSettings": "Ir a la configuración del proveedor"
+    "providerNotConfiguredDesc": "Todavía no hay ningún proveedor de IA configurado o no se ha autorizado el uso de la configuración local. Completa la configuración en Gestión de proveedores antes de iniciar una conversación.",
+    "goToProviderSettings": "Ir a Configuración"
   }
 }

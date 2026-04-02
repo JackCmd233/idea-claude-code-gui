@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
+import type { DiffThemeMode } from '../../../utils/diffTheme';
 import AppearanceTab from './AppearanceTab';
 import BehaviorTab from './BehaviorTab';
 import EnvironmentTab from './EnvironmentTab';
@@ -48,9 +49,18 @@ interface BasicConfigSectionProps {
   // User message bubble color configuration
   userMsgColor?: string;
   onUserMsgColorChange?: (color: string) => void;
+  // Diff theme configuration
+  diffTheme?: DiffThemeMode;
+  onDiffThemeChange?: (theme: DiffThemeMode) => void;
   // Diff expanded by default configuration
   diffExpandedByDefault?: boolean;
   onDiffExpandedByDefaultChange?: (enabled: boolean) => void;
+  // AI commit generation configuration
+  commitGenerationEnabled?: boolean;
+  onCommitGenerationEnabledChange?: (enabled: boolean) => void;
+  // Status bar widget configuration
+  statusBarWidgetEnabled?: boolean;
+  onStatusBarWidgetEnabledChange?: (enabled: boolean) => void;
   // Sound notification configuration
   soundNotificationEnabled?: boolean;
   onSoundNotificationEnabledChange?: (enabled: boolean) => void;
@@ -100,6 +110,8 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onChatBgColorChange={props.onChatBgColorChange}
           userMsgColor={props.userMsgColor}
           onUserMsgColorChange={props.onUserMsgColorChange}
+          diffTheme={props.diffTheme}
+          onDiffThemeChange={props.onDiffThemeChange}
         />
       )}
 
@@ -113,6 +125,10 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onAutoOpenFileEnabledChange={props.onAutoOpenFileEnabledChange}
           diffExpandedByDefault={props.diffExpandedByDefault}
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
+          commitGenerationEnabled={props.commitGenerationEnabled}
+          onCommitGenerationEnabledChange={props.onCommitGenerationEnabledChange}
+          statusBarWidgetEnabled={props.statusBarWidgetEnabled}
+          onStatusBarWidgetEnabledChange={props.onStatusBarWidgetEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}
           onSoundNotificationEnabledChange={props.onSoundNotificationEnabledChange}
           soundOnlyWhenUnfocused={props.soundOnlyWhenUnfocused}

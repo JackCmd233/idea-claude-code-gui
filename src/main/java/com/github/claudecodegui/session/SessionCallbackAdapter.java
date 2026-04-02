@@ -1,6 +1,6 @@
 package com.github.claudecodegui.session;
 
-import com.github.claudecodegui.ClaudeSession;
+import com.github.claudecodegui.session.ClaudeSession;
 import com.github.claudecodegui.handler.PermissionHandler;
 import com.github.claudecodegui.permission.PermissionRequest;
 import com.github.claudecodegui.util.JsUtils;
@@ -19,6 +19,8 @@ import java.util.function.BooleanSupplier;
 public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
 
     private static final Logger LOG = Logger.getInstance(SessionCallbackAdapter.class);
+    /** Throttle interval targeting ~30fps to balance responsiveness with UI thread load. */
+    private static final int DELTA_THROTTLE_MS = 33;
 
     /**
      * Callback interface for JavaScript calls from session events.
@@ -32,6 +34,8 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
     private final PermissionHandler permissionHandler;
     private final BooleanSupplier slashCommandsFetchedSupplier;
     private final Runnable streamEndCallback;
+    private final StreamDeltaThrottler contentDeltaThrottler;
+    private final StreamDeltaThrottler thinkingDeltaThrottler;
     private volatile boolean active = true;
 
     public SessionCallbackAdapter(
@@ -46,10 +50,28 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         this.permissionHandler = permissionHandler;
         this.slashCommandsFetchedSupplier = slashCommandsFetchedSupplier;
         this.streamEndCallback = streamEndCallback;
+        this.contentDeltaThrottler = new StreamDeltaThrottler(
+                DELTA_THROTTLE_MS,
+                delta -> {
+                    if (!isInactive()) {
+                        jsTarget.callJavaScript("onContentDelta", JsUtils.escapeJs(delta));
+                    }
+                }
+        );
+        this.thinkingDeltaThrottler = new StreamDeltaThrottler(
+                DELTA_THROTTLE_MS,
+                delta -> {
+                    if (!isInactive()) {
+                        jsTarget.callJavaScript("onThinkingDelta", JsUtils.escapeJs(delta));
+                    }
+                }
+        );
     }
 
     public void deactivate() {
         active = false;
+        contentDeltaThrottler.dispose();
+        thinkingDeltaThrottler.dispose();
     }
 
     private boolean isInactive() {
@@ -164,6 +186,15 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
     @Override
     public void onSummaryReceived(String summary) {
         LOG.debug("Summary received: " + (summary != null ? summary.substring(0, Math.min(50, summary.length())) : "null"));
+        if (isInactive() || summary == null || summary.trim().isEmpty()) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (isInactive()) {
+                return;
+            }
+            jsTarget.callJavaScript("showSummary", JsUtils.escapeJs(summary));
+        });
     }
 
     @Override
@@ -178,6 +209,8 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
+        contentDeltaThrottler.reset();
+        thinkingDeltaThrottler.reset();
         streamCoalescer.onStreamStart();
         ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive()) {
@@ -194,18 +227,44 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
-        streamCoalescer.onStreamEnd();
-        streamCoalescer.flush(() -> {
+        // Each step is wrapped in safeRun so that a failure in one step
+        // (e.g., flushNow throwing due to a disposed throttler, or JCEF
+        // rejecting a large payload) does not prevent the critical
+        // onStreamEnd signal from reaching the frontend.
+        safeRun("contentDeltaThrottler.flushNow", contentDeltaThrottler::flushNow);
+        safeRun("thinkingDeltaThrottler.flushNow", thinkingDeltaThrottler::flushNow);
+        safeRun("streamCoalescer.onStreamEnd", streamCoalescer::onStreamEnd);
+
+        // Flush pending messages first (fire-and-forget — do NOT nest onStreamEnd
+        // inside the flush callback).  Previously the JS onStreamEnd signal was
+        // chained inside flush's 3-layer async pipeline:
+        //   flush → executeOnPooledThread → invokeLater(1) → callback → callJavaScript → invokeLater(2)
+        // Any failure in that chain silently swallowed the signal, leaving the
+        // frontend permanently stuck in streaming state.
+        streamCoalescer.flush(null);
+
+        // Send onStreamEnd independently via a single invokeLater.
+        // This guarantees the signal reaches the frontend even if the flush
+        // payload is rejected by JCEF (large payload, disposed browser, etc.).
+        ApplicationManager.getApplication().invokeLater(() -> {
             if (isInactive()) {
                 return;
             }
-            jsTarget.callJavaScript("onStreamEnd");
-            jsTarget.callJavaScript("showLoading", "false");
+            safeRun("callJavaScript(onStreamEnd)", () -> jsTarget.callJavaScript("onStreamEnd"));
+            safeRun("callJavaScript(showLoading, false)", () -> jsTarget.callJavaScript("showLoading", "false"));
             if (streamEndCallback != null) {
-                streamEndCallback.run();
+                safeRun("streamEndCallback", streamEndCallback);
             }
-            LOG.debug("Stream ended - flushed messages before notifying frontend");
+            LOG.debug("Stream ended - notified frontend independently of flush");
         });
+    }
+
+    private static void safeRun(String label, Runnable action) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            LOG.warn(label + " failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -213,7 +272,7 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
-        jsTarget.callJavaScript("onContentDelta", JsUtils.escapeJs(delta));
+        contentDeltaThrottler.append(delta);
     }
 
     @Override
@@ -221,7 +280,7 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         if (isInactive()) {
             return;
         }
-        jsTarget.callJavaScript("onThinkingDelta", JsUtils.escapeJs(delta));
+        thinkingDeltaThrottler.append(delta);
     }
 
     @Override
@@ -241,10 +300,18 @@ public class SessionCallbackAdapter implements ClaudeSession.SessionCallback {
         });
     }
 
+    @Override
+    public void onUserMessageUuidPatched(String content, String uuid) {
+        if (isInactive()) {
+            return;
+        }
+        jsTarget.callJavaScript("patchMessageUuid", JsUtils.escapeJs(content), JsUtils.escapeJs(uuid));
+    }
+
     /**
      * Dispose internal resources. Call when the parent window is disposed.
      */
     public void dispose() {
-        // No-op: no resources to dispose currently
+        deactivate();
     }
 }

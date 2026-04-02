@@ -1,5 +1,9 @@
 package com.github.claudecodegui.handler;
 
+import com.github.claudecodegui.handler.core.BaseMessageHandler;
+import com.github.claudecodegui.handler.core.HandlerContext;
+import com.github.claudecodegui.handler.provider.ModelProviderHandler;
+
 import com.github.claudecodegui.util.ThemeConfigService;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -40,6 +44,10 @@ public class SettingsHandler extends BaseMessageHandler {
         "set_send_shortcut",
         "get_auto_open_file_enabled",
         "set_auto_open_file_enabled",
+        "get_commit_generation_enabled",
+        "set_commit_generation_enabled",
+        "get_status_bar_widget_enabled",
+        "set_status_bar_widget_enabled",
         "get_ide_theme",
         "get_commit_prompt",
         "set_commit_prompt",
@@ -149,6 +157,18 @@ public class SettingsHandler extends BaseMessageHandler {
                 return true;
             case "set_auto_open_file_enabled":
                 projectConfigHandler.handleSetAutoOpenFileEnabled(content);
+                return true;
+            case "get_commit_generation_enabled":
+                projectConfigHandler.handleGetCommitGenerationEnabled();
+                return true;
+            case "set_commit_generation_enabled":
+                projectConfigHandler.handleSetCommitGenerationEnabled(content);
+                return true;
+            case "get_status_bar_widget_enabled":
+                projectConfigHandler.handleGetStatusBarWidgetEnabled();
+                return true;
+            case "set_status_bar_widget_enabled":
+                projectConfigHandler.handleSetStatusBarWidgetEnabled(content);
                 return true;
             case "get_ide_theme":
                 projectConfigHandler.handleGetIdeTheme();

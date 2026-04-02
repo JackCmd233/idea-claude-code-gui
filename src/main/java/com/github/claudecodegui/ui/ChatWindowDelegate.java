@@ -1,30 +1,30 @@
 package com.github.claudecodegui.ui;
 
-import com.github.claudecodegui.ClaudeCodeGuiBundle;
-import com.github.claudecodegui.ClaudeSession;
-import com.github.claudecodegui.CodemossSettingsService;
+import com.github.claudecodegui.i18n.ClaudeCodeGuiBundle;
+import com.github.claudecodegui.session.ClaudeSession;
+import com.github.claudecodegui.settings.CodemossSettingsService;
 import com.github.claudecodegui.handler.AgentHandler;
 import com.github.claudecodegui.handler.ClipboardHandler;
 import com.github.claudecodegui.handler.CodexMcpServerHandler;
 import com.github.claudecodegui.handler.DependencyHandler;
 import com.github.claudecodegui.handler.DiffHandler;
-import com.github.claudecodegui.handler.FileExportHandler;
-import com.github.claudecodegui.handler.FileHandler;
-import com.github.claudecodegui.handler.HandlerContext;
-import com.github.claudecodegui.handler.HistoryHandler;
+import com.github.claudecodegui.handler.core.HandlerContext;
+import com.github.claudecodegui.handler.history.HistoryHandler;
 import com.github.claudecodegui.handler.McpServerHandler;
-import com.github.claudecodegui.handler.MessageDispatcher;
+import com.github.claudecodegui.handler.core.MessageDispatcher;
 import com.github.claudecodegui.handler.PermissionHandler;
 import com.github.claudecodegui.handler.PromptEnhancerHandler;
 import com.github.claudecodegui.handler.PromptHandler;
-import com.github.claudecodegui.handler.ProviderHandler;
+import com.github.claudecodegui.handler.provider.ProviderHandler;
 import com.github.claudecodegui.handler.RewindHandler;
 import com.github.claudecodegui.handler.SessionHandler;
 import com.github.claudecodegui.handler.SettingsHandler;
 import com.github.claudecodegui.handler.SkillHandler;
 import com.github.claudecodegui.handler.TabHandler;
-import com.github.claudecodegui.handler.UndoFileHandler;
 import com.github.claudecodegui.handler.WindowEventHandler;
+import com.github.claudecodegui.handler.file.FileExportHandler;
+import com.github.claudecodegui.handler.file.FileHandler;
+import com.github.claudecodegui.handler.file.UndoFileHandler;
 import com.github.claudecodegui.permission.PermissionService;
 import com.github.claudecodegui.provider.claude.ClaudeSDKBridge;
 import com.github.claudecodegui.provider.codex.CodexSDKBridge;
@@ -33,6 +33,7 @@ import com.github.claudecodegui.provider.common.SDKResult;
 import com.github.claudecodegui.session.SessionLifecycleManager;
 import com.github.claudecodegui.session.StreamMessageCoalescer;
 import com.github.claudecodegui.util.JsUtils;
+import com.github.claudecodegui.util.MessageJsonConverter;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -58,18 +59,12 @@ public class ChatWindowDelegate {
     private static final String PERMISSION_MODE_PROPERTY_KEY = "claude.code.permission.mode";
     private static final int STATUS_RESET_DELAY_SECONDS = 5;
 
-    /**
-     * Tab answer status enum (shared with ClaudeChatWindow).
-     */
     public enum TabAnswerStatus {
         IDLE,
         ANSWERING,
         COMPLETED
     }
 
-    /**
-     * Host interface providing access to window-level dependencies.
-     */
     public interface DelegateHost {
         Project getProject();
         ClaudeSDKBridge getClaudeSDKBridge();
@@ -98,23 +93,18 @@ public class ChatWindowDelegate {
         void setFrontendReady(boolean ready);
         void setSlashCommandsFetched(boolean fetched);
         void setFetchedSlashCommandsCount(int count);
+        void persistTabSessionState();
     }
 
     private final DelegateHost host;
-
-    // Tab status state (owned by this delegate)
     private TabAnswerStatus currentTabStatus = TabAnswerStatus.IDLE;
     private ScheduledFuture<?> statusResetTask;
-
-    // QuickFix pending state (owned by this delegate)
     private volatile String pendingQuickFixPrompt = null;
     private volatile MessageCallback pendingQuickFixCallback = null;
 
     public ChatWindowDelegate(DelegateHost host) {
         this.host = host;
     }
-
-    // ==================== Initialization Methods ====================
 
     public void loadNodePathFromSettings() {
         ClaudeSDKBridge claudeSDKBridge = host.getClaudeSDKBridge();
@@ -163,6 +153,7 @@ public class ChatWindowDelegate {
                 ClaudeSession session = host.getSession();
                 if (session != null) {
                     session.setPermissionMode(mode);
+                    host.persistTabSessionState();
                     LOG.info("Loaded permission mode from settings: " + mode);
                     com.github.claudecodegui.notifications.ClaudeNotifier.setMode(host.getProject(), mode);
                 }
@@ -195,9 +186,6 @@ public class ChatWindowDelegate {
         }
     }
 
-    /**
-     * Set up permission service. Returns the sessionId for cleanup on dispose.
-     */
     public String setupPermissionService() {
         ClaudeSDKBridge claudeSDKBridge = host.getClaudeSDKBridge();
         CodexSDKBridge codexSDKBridge = host.getCodexSDKBridge();
@@ -213,8 +201,6 @@ public class ChatWindowDelegate {
             sessionId = java.util.UUID.randomUUID().toString();
         }
 
-        // Critical: align CLAUDE_SESSION_ID across Claude/Codex subprocesses so
-        // PermissionService can hit the same batch of request files.
         claudeSDKBridge.setSessionId(sessionId);
         if (codexSDKBridge != null) {
             codexSDKBridge.setSessionId(sessionId);
@@ -223,8 +209,6 @@ public class ChatWindowDelegate {
 
         PermissionService permissionService = PermissionService.getInstance(project, sessionId);
         permissionService.start();
-        // Use lazy evaluation: host.getPermissionHandler() is called at lambda execution time,
-        // not at creation time, since permissionHandler may not be set yet during construction.
         permissionService.registerDialogShower(project, (toolName, inputs) ->
             host.getPermissionHandler().showFrontendPermissionDialog(toolName, inputs));
         permissionService.registerAskUserQuestionDialogShower(project, (requestId, questionsData) ->
@@ -259,11 +243,10 @@ public class ChatWindowDelegate {
         MessageDispatcher messageDispatcher = new MessageDispatcher();
         host.setMessageDispatcher(messageDispatcher);
 
-        // Register all handlers
         messageDispatcher.registerHandler(new ProviderHandler(handlerContext));
         messageDispatcher.registerHandler(new McpServerHandler(handlerContext));
         messageDispatcher.registerHandler(new CodexMcpServerHandler(handlerContext, settingsService.getCodexMcpServerManager()));
-        messageDispatcher.registerHandler(new SkillHandler(handlerContext, host.getMainPanel()));
+        messageDispatcher.registerHandler(new SkillHandler(handlerContext));
         messageDispatcher.registerHandler(new FileHandler(handlerContext));
         messageDispatcher.registerHandler(new SettingsHandler(handlerContext));
         messageDispatcher.registerHandler(new SessionHandler(handlerContext));
@@ -278,7 +261,6 @@ public class ChatWindowDelegate {
         messageDispatcher.registerHandler(new DependencyHandler(handlerContext));
         messageDispatcher.registerHandler(new ClipboardHandler(handlerContext));
 
-        // Window event handler
         messageDispatcher.registerHandler(new WindowEventHandler(handlerContext, new WindowEventHandler.Callback() {
             @Override public void onHeartbeat(String content) { host.getWebviewWatchdog().handleHeartbeat(content); }
             @Override public void onTabLoadingChanged(boolean loading) { updateTabLoadingState(loading); }
@@ -300,13 +282,11 @@ public class ChatWindowDelegate {
             }
         }));
 
-        // Permission handler
         PermissionHandler permissionHandler = new PermissionHandler(handlerContext);
         permissionHandler.setPermissionDeniedCallback(host::interruptDueToPermissionDenial);
         host.setPermissionHandler(permissionHandler);
         messageDispatcher.registerHandler(permissionHandler);
 
-        // History handler
         HistoryHandler historyHandler = new HistoryHandler(handlerContext);
         historyHandler.setSessionLoadCallback((sessionId, projectPath) ->
             host.getSessionLifecycleManager().loadHistorySession(sessionId, projectPath));
@@ -344,8 +324,6 @@ public class ChatWindowDelegate {
         });
     }
 
-    // ==================== Tab Status Methods ====================
-
     public void updateTabStatus(TabAnswerStatus status) {
         Content parentContent = host.getParentContent();
         String originalTabName = host.getOriginalTabName();
@@ -367,8 +345,6 @@ public class ChatWindowDelegate {
         }
 
         ApplicationManager.getApplication().invokeLater(() -> {
-            // Detect external renames: if current name doesn't start with originalTabName,
-            // someone renamed the tab (e.g. RenameTabAction) — adopt the new name
             String tabName = originalTabName;
             String currentDisplayName = parentContent.getDisplayName();
             if (currentDisplayName != null && !currentDisplayName.startsWith(tabName)) {
@@ -410,8 +386,6 @@ public class ChatWindowDelegate {
     public void updateTabLoadingState(boolean loading) {
         updateTabStatus(loading ? TabAnswerStatus.ANSWERING : TabAnswerStatus.IDLE);
     }
-
-    // ==================== QuickFix Methods ====================
 
     public void sendQuickFixMessage(String prompt, boolean isQuickFix, MessageCallback callback) {
         ClaudeSession session = host.getSession();
@@ -469,13 +443,13 @@ public class ChatWindowDelegate {
         });
     }
 
-    // ==================== Frontend Ready ====================
-
     public void handleFrontendReady() {
         LOG.info("Received frontend_ready signal, frontend is now ready to receive data");
         host.setFrontendReady(true);
 
         host.getSessionLifecycleManager().sendCurrentPermissionMode();
+        replayCurrentSessionStateToFrontend();
+        host.persistTabSessionState();
 
         if (pendingQuickFixPrompt != null && pendingQuickFixCallback != null) {
             LOG.info("Processing pending QuickFix message after frontend ready");
@@ -491,11 +465,53 @@ public class ChatWindowDelegate {
         host.getStreamCoalescer().flush(null);
     }
 
-    // ==================== Cleanup ====================
+    private void replayCurrentSessionStateToFrontend() {
+        ClaudeSession session = host.getSession();
+        if (session == null || host.isDisposed()) {
+            return;
+        }
 
-    /**
-     * Cancel any pending tasks owned by this delegate.
-     */
+        try {
+            String sessionId = session.getSessionId();
+            if (sessionId != null && !sessionId.trim().isEmpty()) {
+                host.callJavaScript("setSessionId", JsUtils.escapeJs(sessionId));
+            }
+
+            List<ClaudeSession.Message> messages = session.getMessages();
+            if (!messages.isEmpty()) {
+                String messagesJson = MessageJsonConverter.convertMessagesToJson(messages);
+                host.callJavaScript("updateMessages", JsUtils.escapeJs(messagesJson));
+            }
+
+            host.callJavaScript("showLoading", String.valueOf(session.isLoading()));
+            host.callJavaScript("showThinkingStatus", String.valueOf(false));
+
+            String summary = session.getSummary();
+            if (summary != null && !summary.trim().isEmpty()) {
+                host.callJavaScript("showSummary", JsUtils.escapeJs(summary));
+            }
+
+            // FIX: Restore streaming state after webview reload.
+            // When the watchdog reloads the webview during active streaming, the frontend's
+            // isStreamingRef is reset to false, causing all onContentDelta callbacks to be
+            // silently dropped.  Re-sending onStreamStart ensures the frontend accepts
+            // subsequent streaming deltas and the stall watchdog is properly initialized.
+            boolean streamActive = host.getStreamCoalescer().isStreamActive();
+            if (streamActive) {
+                LOG.debug("Replaying streaming state to frontend (session was actively streaming during reload)");
+                host.callJavaScript("onStreamStart");
+            }
+
+            LOG.info("Replayed current session state to frontend: sessionId="
+                    + (sessionId != null ? sessionId : "(none)")
+                    + ", messages=" + messages.size()
+                    + ", loading=" + session.isLoading()
+                    + ", streaming=" + streamActive);
+        } catch (Exception e) {
+            LOG.warn("Failed to replay current session state to frontend: " + e.getMessage(), e);
+        }
+    }
+
     public void dispose() {
         if (statusResetTask != null && !statusResetTask.isDone()) {
             statusResetTask.cancel(false);

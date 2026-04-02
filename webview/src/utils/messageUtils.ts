@@ -17,8 +17,8 @@ export function getMessageKey(message: ClaudeMessage, index: number): string {
  * Returns the combined content: "command-message content command-args content"
  *
  * Example:
- *   Input: "<command-message>aimax:auto</command-message>\n<command-name>/aimax:auto</command-name>\n<command-args>你好啊</command-args>"
- *   Output: "aimax:auto 你好啊"
+ *   Input: "<command-message>aimax:auto</command-message>\n<command-name>/aimax:auto</command-name>\n<command-args>hello there</command-args>"
+ *   Output: "aimax:auto hello there"
  */
 export function extractCommandMessageContent(text: string): string {
   if (!text) return text;
@@ -392,6 +392,37 @@ export function mergeConsecutiveAssistantMessages(
     return `${message.type}-${index}`;
   };
 
+  const getAssistantBlockSummary = (message: ClaudeMessage): { hasToolUse: boolean; hasText: boolean } => {
+    const blocks = normalizeBlocksFn(message.raw) || [];
+    return {
+      hasToolUse: blocks.some((block) => block.type === 'tool_use'),
+      hasText: blocks.some((block) => block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0)
+        || Boolean(message.content && message.content.trim()),
+    };
+  };
+
+  const shouldMergeAssistantMessage = (previous: ClaudeMessage, next: ClaudeMessage): boolean => {
+    // Distinct streaming turns must stay visually separated even when the
+    // backend emits adjacent assistant fragments during synchronization.
+    if (
+      previous.__turnId !== undefined &&
+      next.__turnId !== undefined &&
+      previous.__turnId !== next.__turnId
+    ) {
+      return false;
+    }
+
+    const previousSummary = getAssistantBlockSummary(previous);
+    const nextSummary = getAssistantBlockSummary(next);
+
+    // Keep tool-execution assistant messages separated from the final answer.
+    if (previousSummary.hasToolUse !== nextSummary.hasToolUse) {
+      return false;
+    }
+
+    return true;
+  };
+
   const buildMergedAssistantMessage = (group: ClaudeMessage[]): ClaudeMessage => {
     const first = group[0];
 
@@ -441,7 +472,7 @@ export function mergeConsecutiveAssistantMessages(
     }
 
     let j = i + 1;
-    while (j < messages.length && messages[j].type === 'assistant') {
+    while (j < messages.length && messages[j].type === 'assistant' && shouldMergeAssistantMessage(messages[j - 1], messages[j])) {
       j += 1;
     }
 

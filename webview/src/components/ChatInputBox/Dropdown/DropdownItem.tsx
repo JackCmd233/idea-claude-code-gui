@@ -52,12 +52,15 @@ export const DropdownItem = ({
    * Render icon
    */
   const renderIcon = () => {
+    const icon = typeof item.icon === 'string' ? item.icon.trim() : '';
+    const isInlineSvgIcon = icon.startsWith('<svg');
+
     // If icon contains SVG tags, it's an inline SVG
-    if (item.icon?.startsWith('<svg')) {
+    if (isInlineSvgIcon) {
       return (
         <span
           className="dropdown-item-icon"
-          dangerouslySetInnerHTML={{ __html: item.icon }}
+          dangerouslySetInnerHTML={{ __html: icon }}
           style={{
             width: 16,
             height: 16,
@@ -70,7 +73,7 @@ export const DropdownItem = ({
     }
 
     // Otherwise use codicon class name
-    const iconClass = item.icon || getDefaultIconClass(item.type);
+    const iconClass = icon || getDefaultIconClass(item.type);
     return <span className={`dropdown-item-icon codicon ${iconClass}`} />;
   };
 
