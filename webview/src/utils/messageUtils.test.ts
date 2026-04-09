@@ -125,4 +125,24 @@ describe('mergeConsecutiveAssistantMessages', () => {
     expect(result).toHaveLength(2);
     expect(result.map((message) => message.__turnId)).toEqual([10, 11]);
   });
+
+  it('merges tool-only assistant messages across user tool_result boundaries', () => {
+    const messages: ClaudeMessage[] = [
+      makeMsg('assistant', '', {
+        raw: { content: [{ type: 'tool_use', id: 'tool-1', name: 'shell_command', input: { command: 'git status' } }] } as any,
+      }),
+      makeMsg('user', '[tool_result]', {
+        raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] } as any,
+      }),
+      makeMsg('assistant', '', {
+        raw: { content: [{ type: 'tool_use', id: 'tool-2', name: 'shell_command', input: { command: 'git diff --cached' } }] } as any,
+      }),
+    ];
+
+    const result = mergeConsecutiveAssistantMessages(messages, normalizeBlocks);
+
+    expect(result).toHaveLength(1);
+    const mergedRaw = result[0].raw as { content?: Array<{ type?: string; id?: string }> };
+    expect(mergedRaw.content?.filter((block) => block.type === 'tool_use').map((block) => block.id)).toEqual(['tool-1', 'tool-2']);
+  });
 });

@@ -423,6 +423,28 @@ export function mergeConsecutiveAssistantMessages(
     return true;
   };
 
+  const isToolResultOnlyUserMessage = (message: ClaudeMessage): boolean => {
+    if (message.type !== 'user') {
+      return false;
+    }
+
+    if ((message.content ?? '').trim() === '[tool_result]') {
+      return true;
+    }
+
+    const raw = message.raw;
+    if (!raw || typeof raw === 'string') {
+      return false;
+    }
+
+    const content = raw.content ?? raw.message?.content;
+    if (!Array.isArray(content) || content.length === 0) {
+      return false;
+    }
+
+    return content.every((block) => block && block.type === 'tool_result');
+  };
+
   const buildMergedAssistantMessage = (group: ClaudeMessage[]): ClaudeMessage => {
     const first = group[0];
 
@@ -471,19 +493,35 @@ export function mergeConsecutiveAssistantMessages(
       continue;
     }
 
+    const assistantGroup: ClaudeMessage[] = [msg];
     let j = i + 1;
-    while (j < messages.length && messages[j].type === 'assistant' && shouldMergeAssistantMessage(messages[j - 1], messages[j])) {
-      j += 1;
+    let previousAssistant = msg;
+
+    while (j < messages.length) {
+      const candidate = messages[j];
+
+      if (isToolResultOnlyUserMessage(candidate)) {
+        j += 1;
+        continue;
+      }
+
+      if (candidate.type === 'assistant' && shouldMergeAssistantMessage(previousAssistant, candidate)) {
+        assistantGroup.push(candidate);
+        previousAssistant = candidate;
+        j += 1;
+        continue;
+      }
+
+      break;
     }
 
-    const groupLength = j - i;
-    if (groupLength <= 1) {
+    const group = messages.slice(i, j);
+    if (assistantGroup.length <= 1) {
       result.push(msg);
       i = j;
       continue;
     }
 
-    const group = messages.slice(i, j);
     const groupKey = `${getStableId(group[0], i)}..${getStableId(group[group.length - 1], j - 1)}#${group.length}`;
 
     if (cache) {
@@ -499,7 +537,7 @@ export function mergeConsecutiveAssistantMessages(
       }
     }
 
-    const merged = buildMergedAssistantMessage(group);
+    const merged = buildMergedAssistantMessage(assistantGroup);
     if (cache) {
       cache.set(groupKey, { source: group, merged });
       if (cache.size > MESSAGE_MERGE_CACHE_LIMIT) {

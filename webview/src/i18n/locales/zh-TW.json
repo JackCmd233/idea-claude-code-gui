@@ -88,7 +88,8 @@
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[已上傳附件]",
     "streamingConnected": "Claude 已成功連接，正在理解問題",
-    "showEarlierMessages": "顯示之前的 {{count}} 則訊息"
+    "showEarlierMessages": "顯示之前的 {{count}} 則訊息",
+    "totalDuration": "本次耗時"
   },
   "settings": {
     "title": "設定",
@@ -119,7 +120,8 @@
         "french": "Français",
         "japanese": "日本語",
         "russian": "Русский",
-        "korean": "한국어"
+        "korean": "한국어",
+        "portuguese": "Português (Brasil)"
       },
       "nodePath": {
         "label": "Node.js 路徑",
@@ -1215,7 +1217,7 @@
       "label": "Claude Code"
     },
     "codex": {
-      "label": "Codex Cli"
+      "label": "Codex"
     },
     "gemini": {
       "label": "Gemini Cli"

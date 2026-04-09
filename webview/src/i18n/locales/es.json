@@ -88,7 +88,8 @@
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[Archivos adjuntos cargados]",
     "streamingConnected": "Claude conectado, entendiendo tu pregunta",
-    "showEarlierMessages": "Mostrar {{count}} mensajes anteriores"
+    "showEarlierMessages": "Mostrar {{count}} mensajes anteriores",
+    "totalDuration": "Esta respuesta tardó"
   },
   "settings": {
     "title": "Configuración",
@@ -119,7 +120,8 @@
         "french": "Français",
         "japanese": "日本語",
         "russian": "Русский",
-        "korean": "한국어"
+        "korean": "한국어",
+        "portuguese": "Português (Brasil)"
       },
       "nodePath": {
         "label": "Ruta de Node.js",
@@ -1210,7 +1212,7 @@
       "label": "Claude Code"
     },
     "codex": {
-      "label": "Codex Cli"
+      "label": "Codex"
     },
     "gemini": {
       "label": "Gemini Cli"

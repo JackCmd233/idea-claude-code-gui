@@ -88,7 +88,8 @@
     "unknownFile": "Неизвестный файл",
     "attachmentsUploaded": "[Вложения загружены]",
     "streamingConnected": "Claude обрабатывает запрос",
-    "showEarlierMessages": "Показать предыдущие сообщения ({{count}})"
+    "showEarlierMessages": "Показать предыдущие сообщения ({{count}})",
+    "totalDuration": "Этот ответ занял"
   },
   "settings": {
     "title": "Настройки",
@@ -119,7 +120,8 @@
         "french": "Français",
         "japanese": "日本語",
         "russian": "Русский",
-        "korean": "한국어"
+        "korean": "한국어",
+        "portuguese": "Português (Brasil)"
       },
       "nodePath": {
         "label": "Путь к Node.js",
@@ -1236,7 +1238,7 @@
       "label": "Claude Code"
     },
     "codex": {
-      "label": "Codex Cli"
+      "label": "Codex"
     },
     "gemini": {
       "label": "Gemini Cli"

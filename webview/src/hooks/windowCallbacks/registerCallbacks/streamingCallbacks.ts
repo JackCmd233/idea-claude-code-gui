@@ -99,6 +99,8 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onStreamStart = () => {
     if (window.__sessionTransitioning) return;
+    // Record turn start time for duration calculation in onStreamEnd
+    window.__turnStartedAt = Date.now();
     streamingContentRef.current = '';
     isStreamingRef.current = true;
     startStallWatchdog();
@@ -276,6 +278,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Snapshot keys that need collapsing BEFORE they are cleared inside the updater.
     const keysToCollapse = new Set(autoExpandedThinkingKeysRef.current);
 
+    // Snapshot turn start time BEFORE entering the updater
+    const turnStartedAt = window.__turnStartedAt;
+    window.__turnStartedAt = undefined;
+
     // Flush final content AND clear streaming refs inside the same updater.
     // This ensures any previously queued setMessages updater (e.g. from
     // updateMessages) still reads valid refs when it executes, because React
@@ -291,10 +297,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         // structure.  Stale __turnId can interfere with mergeConsecutiveAssistantMessages
         // when subsequent backend snapshots carry different message splits.
         const { __turnId: _removedTurnId, ...restWithoutTurnId } = newMessages[idx];
+        // Calculate durationMs and stamp it on the assistant message
+        const durationMs = (typeof turnStartedAt === 'number' && turnStartedAt > 0)
+          ? Date.now() - turnStartedAt
+          : undefined;
         newMessages[idx] = {
           ...restWithoutTurnId,
           content: finalContent || newMessages[idx].content,
           isStreaming: false,
+          ...(durationMs != null ? { durationMs } : {}),
         };
       }
 

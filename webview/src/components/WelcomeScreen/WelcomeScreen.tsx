@@ -21,6 +21,13 @@ export const WelcomeScreen = memo(function WelcomeScreen({
   onProviderChange,
   onVersionClick,
 }: WelcomeScreenProps): React.ReactElement {
+  const providerLabels: Record<string, string> = {
+    claude: t('providers.claude.label'),
+    codex: t('providers.codex.label'),
+    gemini: t('providers.gemini.label'),
+    opencode: t('providers.opencode.label'),
+  };
+
   return (
     <div
       style={{
@@ -47,7 +54,7 @@ export const WelcomeScreen = memo(function WelcomeScreen({
         </span>
       </div>
       <div>
-        <AnimatedText text={t('chat.sendMessage', { provider: currentProvider === 'codex' ? 'Codex Cli' : 'Claude Code' })} />
+        <AnimatedText text={t('chat.sendMessage', { provider: providerLabels[currentProvider] ?? currentProvider })} />
       </div>
     </div>
   );

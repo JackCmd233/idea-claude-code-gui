@@ -1,6 +1,14 @@
 import { useRef } from 'react';
 import type { ClaudeMessage } from '../types';
 
+/** A single block inside `raw.message.content`. */
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  [key: string]: unknown;
+}
+
 export const THROTTLE_INTERVAL = 50; // 50ms throttle interval
 
 interface UseStreamingMessagesReturn {
@@ -36,8 +44,8 @@ interface UseStreamingMessagesReturn {
 
   // Helper functions
   findLastAssistantIndex: (list: ClaudeMessage[]) => number;
-  extractRawBlocks: (raw: unknown) => any[];
-  buildStreamingBlocks: (existingBlocks: any[]) => any[];
+  extractRawBlocks: (raw: unknown) => ContentBlock[];
+  buildStreamingBlocks: (existingBlocks: ContentBlock[]) => ContentBlock[];
   getOrCreateStreamingAssistantIndex: (list: ClaudeMessage[]) => number;
   patchAssistantForStreaming: (assistant: ClaudeMessage) => ClaudeMessage;
 
@@ -88,10 +96,11 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
   };
 
   // Helper: Extract raw blocks from message
-  const extractRawBlocks = (raw: unknown): any[] => {
+  const extractRawBlocks = (raw: unknown): ContentBlock[] => {
     if (!raw || typeof raw !== 'object') return [];
-    const rawObj: any = raw;
-    const blocks = rawObj.content ?? rawObj.message?.content;
+    const rawObj = raw as Record<string, unknown>;
+    const msg = rawObj.message as Record<string, unknown> | undefined;
+    const blocks = rawObj.content ?? msg?.content;
     return Array.isArray(blocks) ? blocks : [];
   };
 
@@ -103,12 +112,131 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
       .replace(/\n+$/, '');
   };
 
+  const preferMoreCompleteText = (segmentText: unknown, existingText: unknown): string => {
+    const streamed = typeof segmentText === 'string' ? segmentText : '';
+    const existing = typeof existingText === 'string' ? existingText : '';
+
+    if (!streamed) return existing;
+    if (!existing) return streamed;
+    return existing.length > streamed.length ? existing : streamed;
+  };
+
+  const preferMoreCompleteThinking = (segmentThinking: unknown, existingThinking: unknown): string => {
+    const streamed = typeof segmentThinking === 'string' ? normalizeThinking(segmentThinking) : '';
+    const existing = typeof existingThinking === 'string' ? normalizeThinking(existingThinking) : '';
+
+    if (!streamed) return existing;
+    if (!existing) return streamed;
+    return existing.length > streamed.length ? existing : streamed;
+  };
+
+  const getBlockTextContent = (block: ContentBlock, type: 'text' | 'thinking'): string => {
+    if (!block || typeof block !== 'object') return '';
+    if (type === 'thinking') {
+      return normalizeThinking(
+        typeof block.thinking === 'string'
+          ? block.thinking
+          : typeof block.text === 'string'
+            ? block.text
+            : '',
+      );
+    }
+    return typeof block.text === 'string' ? block.text : '';
+  };
+
+  const mergeStreamingTextLikeContent = (left: string, right: string): string => {
+    if (!left) return right;
+    if (!right) return left;
+    if (left.includes(right)) return left;
+    if (right.includes(left)) return right;
+
+    const MAX_OVERLAP_SEARCH = 200;
+    const maxOverlap = Math.min(left.length, right.length, MAX_OVERLAP_SEARCH);
+    for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+      if (left.slice(-overlap) === right.slice(0, overlap)) {
+        return left + right.slice(overlap);
+      }
+    }
+
+    return left + right;
+  };
+
+  const trimDuplicateTextLikeContent = (
+    candidate: string,
+    output: ContentBlock[],
+    type: 'text' | 'thinking',
+  ): string => {
+    let remaining = candidate;
+    if (!remaining) return '';
+
+    for (const block of output) {
+      if (!block || typeof block !== 'object' || block.type !== type) {
+        continue;
+      }
+
+      const existing = getBlockTextContent(block, type);
+      if (!existing) continue;
+
+      if (existing.includes(remaining)) {
+        return '';
+      }
+
+      if (remaining.startsWith(existing)) {
+        remaining = remaining.slice(existing.length);
+        if (!remaining) {
+          return '';
+        }
+      }
+    }
+
+    return remaining;
+  };
+
+  /** Appends a de-duplicated text/thinking block. Mutates the `output` array in place. */
+  const appendNovelTextLikeBlock = (
+    output: ContentBlock[],
+    type: 'text' | 'thinking',
+    rawContent: string,
+  ): void => {
+    const normalized = type === 'thinking' ? normalizeThinking(rawContent) : rawContent;
+    const novel = trimDuplicateTextLikeContent(normalized, output, type);
+    if (!novel) {
+      return;
+    }
+
+    const lastBlock = output[output.length - 1];
+    if (lastBlock && typeof lastBlock === 'object' && lastBlock.type === type) {
+      const existing = getBlockTextContent(lastBlock, type);
+      const merged = mergeStreamingTextLikeContent(existing, novel);
+      if (type === 'thinking') {
+        output[output.length - 1] = {
+          ...lastBlock,
+          thinking: merged,
+          text: merged,
+        };
+      } else {
+        output[output.length - 1] = {
+          ...lastBlock,
+          text: merged,
+        };
+      }
+      return;
+    }
+
+    if (type === 'thinking') {
+      output.push({ type: 'thinking', thinking: novel, text: novel });
+      return;
+    }
+
+    output.push({ type: 'text', text: novel });
+  };
+
   // Helper: Build streaming blocks from segments
-  const buildStreamingBlocks = (existingBlocks: any[]): any[] => {
+  const buildStreamingBlocks = (existingBlocks: ContentBlock[]): ContentBlock[] => {
     const textSegments = streamingTextSegmentsRef.current;
     const thinkingSegments = streamingThinkingSegmentsRef.current;
 
-    const output: any[] = [];
+    const output: ContentBlock[] = [];
     let thinkingIdx = 0;
     let textIdx = 0;
 
@@ -117,21 +245,21 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
         continue;
       }
       if (block.type === 'thinking') {
-        const thinking = thinkingSegments[thinkingIdx];
+        const thinking = preferMoreCompleteThinking(
+          thinkingSegments[thinkingIdx],
+          block.thinking ?? block.text,
+        );
         thinkingIdx += 1;
-        if (typeof thinking === 'string' && thinking.length > 0) {
-          const normalized = normalizeThinking(thinking);
-          if (normalized.length > 0) {
-            output.push({ type: 'thinking', thinking: normalized });
-          }
+        if (thinking.length > 0) {
+          appendNovelTextLikeBlock(output, 'thinking', thinking);
         }
         continue;
       }
       if (block.type === 'text') {
-        const text = textSegments[textIdx];
+        const text = preferMoreCompleteText(textSegments[textIdx], block.text);
         textIdx += 1;
-        if (typeof text === 'string' && text.length > 0) {
-          output.push({ type: 'text', text });
+        if (text.length > 0) {
+          appendNovelTextLikeBlock(output, 'text', text);
         }
         continue;
       }
@@ -144,14 +272,11 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
     for (let phase = appendFromPhase; phase < phasesCount; phase += 1) {
       const thinking = thinkingSegments[phase];
       if (typeof thinking === 'string' && thinking.length > 0) {
-        const normalized = normalizeThinking(thinking);
-        if (normalized.length > 0) {
-          output.push({ type: 'thinking', thinking: normalized });
-        }
+        appendNovelTextLikeBlock(output, 'thinking', thinking);
       }
       const text = textSegments[phase];
       if (typeof text === 'string' && text.length > 0) {
-        output.push({ type: 'text', text });
+        appendNovelTextLikeBlock(output, 'text', text);
       }
     }
 
@@ -189,12 +314,13 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
 
   // Helper: Patch assistant message for streaming
   const patchAssistantForStreaming = (assistant: ClaudeMessage): ClaudeMessage => {
-    const existingRaw = (assistant.raw && typeof assistant.raw === 'object') ? (assistant.raw as any) : { message: { content: [] } };
+    const existingRaw = (assistant.raw && typeof assistant.raw === 'object') ? (assistant.raw as Record<string, unknown>) : { message: { content: [] } };
     const existingBlocks = extractRawBlocks(existingRaw);
     const newBlocks = buildStreamingBlocks(existingBlocks);
 
-    const rawPatched = existingRaw.message
-      ? { ...existingRaw, message: { ...(existingRaw.message || {}), content: newBlocks } }
+    const msg = existingRaw.message as Record<string, unknown> | undefined;
+    const rawPatched = msg
+      ? { ...existingRaw, message: { ...msg, content: newBlocks } }
       : { ...existingRaw, content: newBlocks };
 
     return {

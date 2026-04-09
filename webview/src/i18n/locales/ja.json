@@ -88,7 +88,8 @@
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[添付ファイルがアップロードされました]",
     "streamingConnected": "Claudeに接続しました、質問を理解しています",
-    "showEarlierMessages": "以前の{{count}}件のメッセージを表示"
+    "showEarlierMessages": "以前の{{count}}件のメッセージを表示",
+    "totalDuration": "今回の応答時間"
   },
   "settings": {
     "title": "設定",
@@ -119,7 +120,8 @@
         "french": "Français",
         "japanese": "日本語",
         "russian": "Русский",
-        "korean": "한국어"
+        "korean": "한국어",
+        "portuguese": "Português (Brasil)"
       },
       "nodePath": {
         "label": "Node.jsパス",
@@ -1215,7 +1217,7 @@
       "label": "Claude Code"
     },
     "codex": {
-      "label": "Codex Cli"
+      "label": "Codex"
     },
     "gemini": {
       "label": "Gemini Cli"

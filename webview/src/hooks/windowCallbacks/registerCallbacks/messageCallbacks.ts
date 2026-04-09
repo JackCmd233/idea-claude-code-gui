@@ -165,6 +165,10 @@ export function registerMessageCallbacks(
               if (i === parsed.length - 1) return newMsg;
               if (i < prev.length) {
                 const oldMsg = prev[i];
+                // Preserve frontend-only durationMs across backend updates
+                if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
+                  newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
+                }
                 if (
                   oldMsg.timestamp === newMsg.timestamp &&
                   oldMsg.type === newMsg.type &&
@@ -255,15 +259,20 @@ export function registerMessageCallbacks(
         if (!isStreamingRef.current) {
           // Smart merge: reuse old message objects for performance
           let smartMerged = parsed.map((newMsg, i) => {
-            if (i === parsed.length - 1) return newMsg;
             if (i < prev.length) {
               const oldMsg = prev[i];
-              if (
-                oldMsg.timestamp === newMsg.timestamp &&
-                oldMsg.type === newMsg.type &&
-                oldMsg.content === newMsg.content
-              ) {
-                return oldMsg;
+              // Preserve frontend-only durationMs across backend updates
+              if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
+                newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
+              }
+              if (i < parsed.length - 1) {
+                if (
+                  oldMsg.timestamp === newMsg.timestamp &&
+                  oldMsg.type === newMsg.type &&
+                  oldMsg.content === newMsg.content
+                ) {
+                  return oldMsg;
+                }
               }
             }
             return newMsg;
@@ -437,7 +446,25 @@ export function registerMessageCallbacks(
           setLoadingStartTime(Date.now());
         }
       } else {
-        setLoadingStartTime(null);
+        // Stamp durationMs on the last assistant message when loading ends.
+        // Skip if onStreamEnd already stamped it (avoids double-write race).
+        setLoadingStartTime((prevStartTime) => {
+          if (prevStartTime != null) {
+            const durationMs = Date.now() - prevStartTime;
+            setMessages((prev) => {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].type === 'assistant') {
+                  if (typeof prev[i].durationMs === 'number') return prev;
+                  const next = [...prev];
+                  next[i] = { ...next[i], durationMs };
+                  return next;
+                }
+              }
+              return prev;
+            });
+          }
+          return null;
+        });
       }
       return isLoading;
     });

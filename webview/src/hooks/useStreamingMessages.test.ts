@@ -1,0 +1,279 @@
+import { renderHook } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { useStreamingMessages } from './useStreamingMessages';
+import type { ClaudeMessage } from '../types';
+
+describe('useStreamingMessages', () => {
+  it('keeps the more complete backend text block before a streamed tool boundary', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current =
+      '看到截图了，你只需要"总耗时 0:10"这部分，不要"最终消息"文案。先看参考项目的实现。先看参考项目里耗时的实现。';
+    result.current.streamingTextSegmentsRef.current = [
+      '看到截图了，你只',
+      '先看参考项目里耗时的实现。',
+    ];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '看到截图了，你只需要"总耗时 0:10"这部分，不要"最终消息"文案。先看参考项目的实现。',
+            },
+            {
+              type: 'tool_use',
+              id: 'search-1',
+              name: 'search',
+              input: { query: 'src' },
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    expect(content).toHaveLength(3);
+    expect(content[0]).toMatchObject({
+      type: 'text',
+      text: '看到截图了，你只需要"总耗时 0:10"这部分，不要"最终消息"文案。先看参考项目的实现。',
+    });
+    expect(content[1]).toMatchObject({
+      type: 'tool_use',
+      id: 'search-1',
+      name: 'search',
+    });
+    expect(content[2]).toMatchObject({
+      type: 'text',
+      text: '先看参考项目里耗时的实现。',
+    });
+  });
+
+  it('does not append a trailing duplicate text segment after a tool card appears', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current = '我来对未提交的更改进行代码审查。';
+    result.current.streamingTextSegmentsRef.current = [
+      '我来对未提交的更改进行代码审查。',
+      '来对未提交的更改进行代码审查。',
+    ];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '我来对未提交的更改进行代码审查。',
+            },
+            {
+              type: 'tool_use',
+              id: 'bash-1',
+              name: 'run_command',
+              input: { command: 'git status --short' },
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({
+      type: 'text',
+      text: '我来对未提交的更改进行代码审查。',
+    });
+    expect(content[1]).toMatchObject({
+      type: 'tool_use',
+      id: 'bash-1',
+      name: 'run_command',
+    });
+  });
+
+  it('trims repeated prefixes from a delayed post-tool text segment and only keeps the novel tail', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current =
+      '让我获取已更改文件的 diff。现在让我查看完整的文件内容以获取更多上下文。';
+    result.current.streamingTextSegmentsRef.current = [
+      '让我获取已更改文件的 diff。',
+      '让我获取已更改文件的 diff。现在让我查看完整的文件内容以获取更多上下文。',
+    ];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: '让我获取已更改文件的 diff。',
+            },
+            {
+              type: 'tool_use',
+              id: 'batch-1',
+              name: 'run_command',
+              input: { command: 'git diff --stat' },
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    expect(content).toHaveLength(3);
+    expect(content[0]).toMatchObject({
+      type: 'text',
+      text: '让我获取已更改文件的 diff。',
+    });
+    expect(content[1]).toMatchObject({
+      type: 'tool_use',
+      id: 'batch-1',
+      name: 'run_command',
+    });
+    expect(content[2]).toMatchObject({
+      type: 'text',
+      text: '现在让我查看完整的文件内容以获取更多上下文。',
+    });
+  });
+
+  it('does not duplicate thinking blocks when incoming snapshot is cumulative', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current = '分析完成，代码没有问题。';
+    result.current.streamingTextSegmentsRef.current = ['分析完成，代码没有问题。'];
+    result.current.streamingThinkingSegmentsRef.current = [
+      'Let me analyze this code carefully.',
+    ];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Let me analyze this code carefully.',
+              text: 'Let me analyze this code carefully.',
+            },
+            {
+              type: 'text',
+              text: '分析完成，代码没有问题。',
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({
+      type: 'thinking',
+      thinking: 'Let me analyze this code carefully.',
+    });
+    expect(content[1]).toMatchObject({
+      type: 'text',
+      text: '分析完成，代码没有问题。',
+    });
+  });
+
+  it('keeps the more complete thinking block when streamed segment is partial', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current = '结论如下。';
+    result.current.streamingTextSegmentsRef.current = ['结论如下。'];
+    result.current.streamingThinkingSegmentsRef.current = ['Let me analyze'];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Let me analyze this code carefully.',
+              text: 'Let me analyze this code carefully.',
+            },
+            {
+              type: 'text',
+              text: '结论如下。',
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({
+      type: 'thinking',
+      thinking: 'Let me analyze this code carefully.',
+    });
+    expect(content[1]).toMatchObject({
+      type: 'text',
+      text: '结论如下。',
+    });
+  });
+
+  it('handles empty thinking segment without overwriting existing thinking content', () => {
+    const { result } = renderHook(() => useStreamingMessages());
+
+    result.current.streamingContentRef.current = '完成。';
+    result.current.streamingTextSegmentsRef.current = ['完成。'];
+    result.current.streamingThinkingSegmentsRef.current = [''];
+
+    const assistant: ClaudeMessage = {
+      type: 'assistant',
+      content: result.current.streamingContentRef.current,
+      isStreaming: true,
+      raw: {
+        message: {
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Deep analysis of the problem.',
+              text: 'Deep analysis of the problem.',
+            },
+            {
+              type: 'text',
+              text: '完成。',
+            },
+          ],
+        },
+      },
+    };
+
+    const patched = result.current.patchAssistantForStreaming(assistant);
+    const content = ((patched.raw as any).message?.content ?? []) as Array<Record<string, unknown>>;
+
+    const thinkingBlocks = content.filter((b) => b.type === 'thinking');
+    expect(thinkingBlocks).toHaveLength(1);
+    expect(thinkingBlocks[0]).toMatchObject({
+      type: 'thinking',
+      thinking: 'Deep analysis of the problem.',
+    });
+  });
+});

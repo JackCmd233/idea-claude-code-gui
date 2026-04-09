@@ -565,6 +565,12 @@ interface Window {
   __lastStreamActivityAt?: number;
 
   /**
+   * Timestamp when the current streaming turn started.
+   * Used to calculate durationMs on the assistant message when the stream ends.
+   */
+  __turnStartedAt?: number;
+
+  /**
    * Interval handle for the stream stall watchdog.
    * Stored on window so re-registration of streaming callbacks clears the previous interval.
    */

@@ -1,3 +1,41 @@
+##### **2026年4月9日（v0.3.4）**
+
+English:
+
+✨ Features
+- Add bundled Claude CLI slash commands to the registry (`/batch`, `/claude-api`, `/debug`, `/loop`, `/simplify`, `/update-config`) and unify local command handling across new-session, resume, and plan flows
+- Add Brazilian Portuguese (`pt-BR`) locale and update related translations
+- Show response duration beneath completed assistant messages, with updated localized labels across all supported locales
+
+🐛 Fixes
+- Fix WebView freezing on `Ctrl+C` by moving clipboard read/write off the CEF browser thread
+- Align permission mode hooks and tool approval behavior with Claude CLI: enforce plan-mode approvals correctly, auto-approve Agent/Task in plan mode, allow `PLAN.md` edits, and tighten MultiEdit/path validation
+- Fix duplicate text and thinking blocks during streaming merge by deduplicating cumulative snapshots on both backend and frontend, with added unit tests
+- Fix chat text size inconsistency by reusing the editor font size variable
+- Fix copy button visibility for tool-only assistant messages and merge assistant messages correctly across `tool_result`-only boundaries
+
+🔧 Improvements
+- Make the response duration label more conversational across all locales
+
+中文：
+
+✨ Features
+- 新增 Claude CLI 内置斜杠命令注册：支持 `/batch`、`/claude-api`、`/debug`、`/loop`、`/simplify`、`/update-config`，并统一新会话、恢复会话与计划模式下的本地命令处理逻辑
+- 新增巴西葡萄牙语（`pt-BR`）界面语言，并补充相关翻译
+- 在已完成的助手消息下方显示响应耗时，并同步更新所有支持语言中的本地化文案
+
+🐛 Fixes
+- 修复 `Ctrl+C` 复制时 WebView 卡顿的问题：将剪贴板读写移出 CEF 浏览器线程
+- 修复权限模式和工具审批行为与 Claude CLI 不一致的问题：正确执行计划模式审批、在计划模式下自动批准 Agent/Task、允许编辑 `PLAN.md`，并加强 MultiEdit 与路径校验
+- 修复流式合并过程中重复出现文本块和 thinking 块的问题：在前后端同时对累积快照做去重，并补充单元测试
+- 修复聊天文本字号与编辑器不一致的问题，改为复用编辑器字体大小变量
+- 修复仅包含工具调用的助手消息仍显示复制按钮的问题，并正确跨 `tool_result` 边界合并连续的助手消息
+
+🔧 Improvements
+- 优化所有语言中的响应耗时文案，使表达更自然、更口语化
+
+---
+
 ##### **2026年4月1日（v0.3.3）**
 
 English:

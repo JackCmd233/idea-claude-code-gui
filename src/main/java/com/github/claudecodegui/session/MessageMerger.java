@@ -5,7 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Message merger.
@@ -69,6 +71,7 @@ public class MessageMerger {
             : new JsonArray();
 
         Map<String, Integer> indexByKey = buildContentIndex(baseContent);
+        Set<Integer> consumedUnkeyedIndexes = new HashSet<>();
 
         JsonArray incomingContent = incomingMessage.has("content") && incomingMessage.get("content").isJsonArray()
             ? incomingMessage.getAsJsonArray("content")
@@ -94,6 +97,13 @@ public class MessageMerger {
                     baseContent.add(elementCopy);
                     indexByKey.put(key, baseContent.size() - 1);
                     continue;
+                } else {
+                    int idx = findMatchingUnkeyedBlockIndex(baseContent, block, consumedUnkeyedIndexes);
+                    if (idx >= 0) {
+                        baseContent.set(idx, mergeUnkeyedBlock(baseContent.get(idx).getAsJsonObject(), block));
+                        consumedUnkeyedIndexes.add(idx);
+                        continue;
+                    }
                 }
             }
 
@@ -135,5 +145,149 @@ public class MessageMerger {
         }
 
         return null;
+    }
+
+    private int findMatchingUnkeyedBlockIndex(
+            JsonArray baseContent,
+            JsonObject incomingBlock,
+            Set<Integer> consumedUnkeyedIndexes
+    ) {
+        String incomingType = getContentBlockType(incomingBlock);
+        if (incomingType == null) {
+            return -1;
+        }
+
+        for (int i = 0; i < baseContent.size(); i++) {
+            if (consumedUnkeyedIndexes.contains(i)) {
+                continue;
+            }
+
+            JsonElement existingElement = baseContent.get(i);
+            if (!existingElement.isJsonObject()) {
+                continue;
+            }
+
+            JsonObject existingBlock = existingElement.getAsJsonObject();
+            if (getContentBlockKey(existingBlock) != null) {
+                continue;
+            }
+
+            if (!incomingType.equals(getContentBlockType(existingBlock))) {
+                continue;
+            }
+
+            if (blocksLikelyRepresentSameSegment(existingBlock, incomingBlock)) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private JsonObject mergeUnkeyedBlock(JsonObject existingBlock, JsonObject incomingBlock) {
+        String type = getContentBlockType(incomingBlock);
+        JsonObject merged = incomingBlock.deepCopy();
+
+        if ("text".equals(type)) {
+            merged.addProperty("text", preferMoreCompleteContent(
+                    getTextContent(existingBlock),
+                    getTextContent(incomingBlock)
+            ));
+            return merged;
+        }
+
+        if ("thinking".equals(type)) {
+            String thinking = preferMoreCompleteContent(
+                    getThinkingContent(existingBlock),
+                    getThinkingContent(incomingBlock)
+            );
+            if (thinking != null && !thinking.isEmpty()) {
+                merged.addProperty("thinking", thinking);
+                merged.addProperty("text", thinking);
+            }
+        }
+
+        return merged;
+    }
+
+    private boolean blocksLikelyRepresentSameSegment(JsonObject existingBlock, JsonObject incomingBlock) {
+        String type = getContentBlockType(incomingBlock);
+        if (type == null || !type.equals(getContentBlockType(existingBlock))) {
+            return false;
+        }
+
+        if ("text".equals(type)) {
+            return textLooksRelated(getTextContent(existingBlock), getTextContent(incomingBlock));
+        }
+
+        if ("thinking".equals(type)) {
+            return textLooksRelated(getThinkingContent(existingBlock), getThinkingContent(incomingBlock));
+        }
+
+        return existingBlock.equals(incomingBlock);
+    }
+
+    private String getContentBlockType(JsonObject block) {
+        return block.has("type") && !block.get("type").isJsonNull()
+                ? block.get("type").getAsString()
+                : null;
+    }
+
+    private String getTextContent(JsonObject block) {
+        return block.has("text") && !block.get("text").isJsonNull()
+                ? block.get("text").getAsString()
+                : "";
+    }
+
+    private String getThinkingContent(JsonObject block) {
+        if (block.has("thinking") && !block.get("thinking").isJsonNull()) {
+            return block.get("thinking").getAsString();
+        }
+        return getTextContent(block);
+    }
+
+    private boolean textLooksRelated(String existingText, String incomingText) {
+        String existing = existingText != null ? existingText : "";
+        String incoming = incomingText != null ? incomingText : "";
+
+        if (existing.isEmpty() || incoming.isEmpty()) {
+            return existing.isEmpty() && incoming.isEmpty();
+        }
+
+        if (existing.equals(incoming)
+                || existing.startsWith(incoming)
+                || incoming.startsWith(existing)) {
+            return true;
+        }
+
+        // Check suffix-prefix overlap (streaming may produce partial overlaps)
+        int maxOverlap = Math.min(existing.length(), incoming.length());
+        maxOverlap = Math.min(maxOverlap, 200);
+        for (int overlap = maxOverlap; overlap > 0; overlap--) {
+            if (existing.endsWith(incoming.substring(0, overlap))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String preferMoreCompleteContent(String existingText, String incomingText) {
+        String existing = existingText != null ? existingText : "";
+        String incoming = incomingText != null ? incomingText : "";
+
+        if (incoming.isEmpty()) {
+            return existing;
+        }
+        if (existing.isEmpty()) {
+            return incoming;
+        }
+        if (incoming.startsWith(existing)) {
+            return incoming;
+        }
+        if (existing.startsWith(incoming)) {
+            return existing;
+        }
+        return incoming.length() >= existing.length() ? incoming : existing;
     }
 }
