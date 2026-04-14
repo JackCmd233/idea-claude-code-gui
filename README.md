@@ -25,7 +25,7 @@ A powerful IntelliJ IDEA plugin that provides a visual interface for **Claude Co
 
 ## Installation
 
-[IDEA Claude Code GUI Installation](https://plugins.jetbrains.com/plugin/30666-cc-gui)
+[CC GUI（Claude or Codex） Installation](https://plugins.jetbrains.com/plugin/29342-cc-gui-claude-or-codex-)
 
 ---
 
