@@ -16,6 +16,7 @@ import {
   getRawUuid,
   preserveLastAssistantIdentity,
   preserveLatestMessagesOnShrink,
+  preservePendingRegenerationPlaceholder,
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
@@ -109,6 +110,11 @@ export function registerMessageCallbacks(
       options.currentProviderRef.current,
     );
     return ensureStreamingAssistantPreserved(prevList, withoutDuplicateToolTail);
+  };
+
+  const normalizeBlocksForPendingRegeneration = (raw?: ClaudeMessage['raw']) => {
+    const blocks = extractRawBlocks(raw);
+    return Array.isArray(blocks) ? blocks : [];
   };
 
   // During streaming, buffer updateMessages calls and process only the latest
@@ -257,15 +263,22 @@ export function registerMessageCallbacks(
 
         // Non-streaming case (or streaming hasn't started yet)
         if (!isStreamingRef.current) {
+          const patchedParsed = preservePendingRegenerationPlaceholder(
+            prev,
+            parsed,
+            options.pendingRegenerationRef,
+            normalizeBlocksForPendingRegeneration,
+          );
+
           // Smart merge: reuse old message objects for performance
-          let smartMerged = parsed.map((newMsg, i) => {
+          let smartMerged = patchedParsed.map((newMsg, i) => {
             if (i < prev.length) {
               const oldMsg = prev[i];
               // Preserve frontend-only durationMs across backend updates
               if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
                 newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
               }
-              if (i < parsed.length - 1) {
+              if (i < patchedParsed.length - 1) {
                 if (
                   oldMsg.timestamp === newMsg.timestamp &&
                   oldMsg.type === newMsg.type &&
@@ -553,11 +566,13 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = null;
     }
     window.__deniedToolIds?.clear();
+    options.pendingRegenerationRef.current = null;
     resetTransientUiState();
     setMessages([]);
   };
 
   window.addErrorMessage = (message) => {
+    options.pendingRegenerationRef.current = null;
     addToast(message, 'error');
   };
 

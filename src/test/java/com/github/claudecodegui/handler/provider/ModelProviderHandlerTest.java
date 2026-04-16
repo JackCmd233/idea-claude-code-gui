@@ -42,6 +42,17 @@ public class ModelProviderHandlerTest {
     }
 
     @Test
+    public void shouldNotApplyGlobalAnthropicModelOverrideToExplicitCustomModelIds() {
+        JsonObject env = new JsonObject();
+        env.addProperty("ANTHROPIC_MODEL", "GLM-5.1");
+        env.addProperty("ANTHROPIC_DEFAULT_SONNET_MODEL", "MiniMax-M2.1");
+
+        String resolved = ModelProviderHandler.resolveConfiguredClaudeModel("MiniMax-M2.7", env);
+
+        assertEquals("MiniMax-M2.7", resolved);
+    }
+
+    @Test
     public void shouldUseResolvedModelForContextLimitWhenCapacitySuffixExists() {
         JsonObject env = new JsonObject();
         env.addProperty("ANTHROPIC_DEFAULT_SONNET_MODEL", "glm-4.7[1M]");

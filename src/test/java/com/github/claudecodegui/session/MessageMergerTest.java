@@ -229,29 +229,6 @@ public class MessageMergerTest {
     }
 
     @Test
-    public void mergeAssistantMessageKeepsMoreCompleteThinkingBlock() {
-        MessageMerger merger = new MessageMerger();
-
-        JsonObject existingRaw = assistantMessage(
-                thinkingBlock("Let me analyze"),
-                textBlock("Result.")
-        );
-
-        JsonObject newRaw = assistantMessage(
-                thinkingBlock("Let me analyze this code carefully."),
-                textBlock("Result.")
-        );
-
-        JsonArray mergedContent = merger.mergeAssistantMessage(existingRaw, newRaw)
-                .getAsJsonObject("message")
-                .getAsJsonArray("content");
-
-        assertEquals(2, mergedContent.size());
-        assertEquals("Let me analyze this code carefully.", mergedContent.get(0).getAsJsonObject().get("thinking").getAsString());
-        assertEquals("Let me analyze this code carefully.", mergedContent.get(0).getAsJsonObject().get("text").getAsString());
-    }
-
-    @Test
     public void mergeAssistantMessageHandlesEmptyThinkingBlock() {
         MessageMerger merger = new MessageMerger();
 

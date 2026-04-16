@@ -59,6 +59,8 @@ interface MessageListProps {
   /** Notify parent when the number of collapsed (hidden) messages changes. */
   onCollapsedCountChange?: (count: number) => void;
   onNavigateToProviderSettings?: () => void;
+  canRegenerateLastAssistant?: boolean;
+  onRegenerateLastAssistant?: () => void;
 }
 
 export const MessageList = memo(function MessageList({
@@ -76,6 +78,8 @@ export const MessageList = memo(function MessageList({
   onMessageNodeRef,
   onCollapsedCountChange,
   onNavigateToProviderSettings,
+  canRegenerateLastAssistant,
+  onRegenerateLastAssistant,
 }: MessageListProps) {
   const [showAll, setShowAll] = useState(false);
 
@@ -153,6 +157,8 @@ export const MessageList = memo(function MessageList({
             onNodeRef={onMessageNodeRef}
             onNavigateToProviderSettings={onNavigateToProviderSettings}
             toolResultSignature={toolResultSignature}
+            canRegenerate={!!canRegenerateLastAssistant && message.type === 'assistant' && messageIndex === messages.length - 1}
+            onRegenerate={onRegenerateLastAssistant}
           />
         );
       })}

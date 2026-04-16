@@ -20,6 +20,10 @@ export interface ContextInfo {
   raw: string;
 }
 
+export interface PendingRegenerationState {
+  placeholderTimestamp: string;
+}
+
 export interface UseWindowCallbacksOptions {
   t: TFunction;
   addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
@@ -63,6 +67,7 @@ export interface UseWindowCallbacksOptions {
   isUserAtBottomRef: MutableRefObject<boolean>;
   userPausedRef: MutableRefObject<boolean>;
   suppressNextStatusToastRef: MutableRefObject<boolean>;
+  pendingRegenerationRef: MutableRefObject<PendingRegenerationState | null>;
 
   // Streaming refs from useStreamingMessages
   streamingContentRef: MutableRefObject<string>;

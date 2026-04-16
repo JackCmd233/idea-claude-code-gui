@@ -34,7 +34,12 @@ export function mapModelIdToSdkName(modelId) {
  * those values are written to ~/.claude/settings.json as ANTHROPIC_DEFAULT_*_MODEL env vars.
  * This function checks those settings and returns the mapped model name if configured.
  *
- * Priority: ANTHROPIC_MODEL (global override) > ANTHROPIC_DEFAULT_*_MODEL > original modelId
+ * Priority for Claude family selectors: ANTHROPIC_MODEL (global override)
+ * > ANTHROPIC_DEFAULT_*_MODEL > original modelId.
+ *
+ * Explicit custom model IDs selected in the UI (for example "MiniMax-M2.7")
+ * must win over legacy provider defaults, even if settings.env still contains
+ * a leftover ANTHROPIC_MODEL value from an older configuration.
  *
  * @param {string} modelId - Internal model ID from frontend (e.g. 'claude-sonnet-4-6')
  * @param {object} userEnv - The env object from settings.json (settings.env)
@@ -44,6 +49,18 @@ export function resolveModelFromSettings(modelId, userEnv) {
   if (!modelId || !userEnv) return modelId;
 
   const lowerModel = modelId.toLowerCase();
+  const isClaudeFamilySelector =
+    lowerModel === 'sonnet'
+    || lowerModel === 'haiku'
+    || lowerModel === 'opus'
+    || lowerModel.startsWith('claude-')
+    || lowerModel.startsWith('claude_');
+
+  // Non-Claude IDs are already explicit runtime model names selected by the user.
+  // Do not let a stale global override rewrite them back to a provider default.
+  if (!isClaudeFamilySelector) {
+    return modelId;
+  }
 
   // ANTHROPIC_MODEL is a global override that applies to all model types
   if (userEnv.ANTHROPIC_MODEL && String(userEnv.ANTHROPIC_MODEL).trim()) {
@@ -70,9 +87,6 @@ export function resolveModelFromSettings(modelId, userEnv) {
       return String(mapped).trim();
     }
   }
-  // For non-Anthropic model IDs that don't contain 'opus'/'haiku'/'sonnet',
-  // skip mapping and use the original model ID as-is.
-
   // No mapping configured, use original model ID
   return modelId;
 }

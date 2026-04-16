@@ -99,6 +99,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onStreamStart = () => {
     if (window.__sessionTransitioning) return;
+    options.pendingRegenerationRef.current = null;
     // Record turn start time for duration calculation in onStreamEnd
     window.__turnStartedAt = Date.now();
     streamingContentRef.current = '';
@@ -249,6 +250,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onStreamEnd = (sequence?: string | number) => {
     if (window.__sessionTransitioning) return;
+    options.pendingRegenerationRef.current = null;
     clearStallWatchdog();
     const parsedSequence = parseSequence(sequence);
     if (parsedSequence != null) {

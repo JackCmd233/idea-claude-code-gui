@@ -69,6 +69,118 @@ const MESSAGE_MERGE_CACHE_LIMIT = 3000;
 
 export type LocalizeMessageFn = (text: string) => string;
 
+export interface MessageRange {
+  startIndex: number;
+  endIndex: number;
+}
+
+const isSameAssistantTurn = (previous: ClaudeMessage, next: ClaudeMessage): boolean => {
+  if (
+    previous.__turnId !== undefined &&
+    next.__turnId !== undefined &&
+    previous.__turnId !== next.__turnId
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const getAssistantBlockSummary = (
+  message: ClaudeMessage,
+  normalizeBlocksFn: (raw?: ClaudeRawMessage | string) => ClaudeContentBlock[] | null,
+): { hasToolUse: boolean; hasText: boolean } => {
+  const blocks = normalizeBlocksFn(message.raw) || [];
+  return {
+    hasToolUse: blocks.some((block) => block.type === 'tool_use'),
+    hasText:
+      blocks.some((block) => block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) ||
+      Boolean(message.content && message.content.trim()),
+  };
+};
+
+export const isToolResultOnlyUserMessage = (message: ClaudeMessage): boolean => {
+  if (message.type !== 'user') {
+    return false;
+  }
+
+  if ((message.content ?? '').trim() === '[tool_result]') {
+    return true;
+  }
+
+  const raw = message.raw;
+  if (!raw || typeof raw === 'string') {
+    return false;
+  }
+
+  const content = raw.content ?? raw.message?.content;
+  if (!Array.isArray(content) || content.length === 0) {
+    return false;
+  }
+
+  return content.every((block) => block && block.type === 'tool_result');
+};
+
+export const shouldMergeAssistantMessage = (
+  previous: ClaudeMessage,
+  next: ClaudeMessage,
+  normalizeBlocksFn: (raw?: ClaudeRawMessage | string) => ClaudeContentBlock[] | null,
+): boolean => {
+  if (!isSameAssistantTurn(previous, next)) {
+    return false;
+  }
+
+  const previousSummary = getAssistantBlockSummary(previous, normalizeBlocksFn);
+  const nextSummary = getAssistantBlockSummary(next, normalizeBlocksFn);
+
+  if (previousSummary.hasToolUse !== nextSummary.hasToolUse) {
+    return false;
+  }
+
+  return true;
+};
+
+export function findLastVisibleAssistantGroupRange(
+  messages: ClaudeMessage[],
+  _normalizeBlocksFn: (raw?: ClaudeRawMessage | string) => ClaudeContentBlock[] | null,
+): MessageRange | null {
+  if (messages.length === 0) {
+    return null;
+  }
+
+  for (let end = messages.length - 1; end >= 0; end -= 1) {
+    const endMessage = messages[end];
+    if (endMessage?.type !== 'assistant') {
+      continue;
+    }
+
+    let start = end;
+    let previousAssistant = endMessage;
+    let cursor = end - 1;
+
+    while (cursor >= 0) {
+      const candidate = messages[cursor];
+      if (isToolResultOnlyUserMessage(candidate)) {
+        start = cursor;
+        cursor -= 1;
+        continue;
+      }
+
+      if (candidate.type === 'assistant' && isSameAssistantTurn(candidate, previousAssistant)) {
+        start = cursor;
+        previousAssistant = candidate;
+        cursor -= 1;
+        continue;
+      }
+
+      break;
+    }
+
+    return { startIndex: start, endIndex: end };
+  }
+
+  return null;
+}
+
 /**
  * Normalize raw message content into content blocks
  */
@@ -392,59 +504,6 @@ export function mergeConsecutiveAssistantMessages(
     return `${message.type}-${index}`;
   };
 
-  const getAssistantBlockSummary = (message: ClaudeMessage): { hasToolUse: boolean; hasText: boolean } => {
-    const blocks = normalizeBlocksFn(message.raw) || [];
-    return {
-      hasToolUse: blocks.some((block) => block.type === 'tool_use'),
-      hasText: blocks.some((block) => block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0)
-        || Boolean(message.content && message.content.trim()),
-    };
-  };
-
-  const shouldMergeAssistantMessage = (previous: ClaudeMessage, next: ClaudeMessage): boolean => {
-    // Distinct streaming turns must stay visually separated even when the
-    // backend emits adjacent assistant fragments during synchronization.
-    if (
-      previous.__turnId !== undefined &&
-      next.__turnId !== undefined &&
-      previous.__turnId !== next.__turnId
-    ) {
-      return false;
-    }
-
-    const previousSummary = getAssistantBlockSummary(previous);
-    const nextSummary = getAssistantBlockSummary(next);
-
-    // Keep tool-execution assistant messages separated from the final answer.
-    if (previousSummary.hasToolUse !== nextSummary.hasToolUse) {
-      return false;
-    }
-
-    return true;
-  };
-
-  const isToolResultOnlyUserMessage = (message: ClaudeMessage): boolean => {
-    if (message.type !== 'user') {
-      return false;
-    }
-
-    if ((message.content ?? '').trim() === '[tool_result]') {
-      return true;
-    }
-
-    const raw = message.raw;
-    if (!raw || typeof raw === 'string') {
-      return false;
-    }
-
-    const content = raw.content ?? raw.message?.content;
-    if (!Array.isArray(content) || content.length === 0) {
-      return false;
-    }
-
-    return content.every((block) => block && block.type === 'tool_result');
-  };
-
   const buildMergedAssistantMessage = (group: ClaudeMessage[]): ClaudeMessage => {
     const first = group[0];
 
@@ -505,7 +564,7 @@ export function mergeConsecutiveAssistantMessages(
         continue;
       }
 
-      if (candidate.type === 'assistant' && shouldMergeAssistantMessage(previousAssistant, candidate)) {
+      if (candidate.type === 'assistant' && shouldMergeAssistantMessage(previousAssistant, candidate, normalizeBlocksFn)) {
         assistantGroup.push(candidate);
         previousAssistant = candidate;
         j += 1;

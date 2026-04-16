@@ -29,6 +29,7 @@ import {
   RESUME_COMMANDS,
   PLAN_COMMANDS,
 } from './hooks/useMessageSender';
+import type { PendingRegenerationState } from './hooks/useWindowCallbacks';
 import type { ContextInfo, ViewMode } from './hooks';
 import { formatTime } from './utils/helpers';
 import { extractMarkdownContent } from './utils/copyUtils';
@@ -91,6 +92,7 @@ const App = () => {
   const [customSessionTitle, setCustomSessionTitle] = useState<string | null>(null);
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
   const [draftInput, setDraftInput] = useState('');
+  const pendingRegenerationRef = useRef<PendingRegenerationState | null>(null);
 
   // StatusPanel collapse state
   const userCollapsedRef = useRef(false);
@@ -247,6 +249,7 @@ const App = () => {
     setContextInfo, setSelectedAgent,
     currentProviderRef, messagesContainerRef, isUserAtBottomRef, userPausedRef,
     suppressNextStatusToastRef,
+    pendingRegenerationRef,
     streamingContentRef, isStreamingRef, useBackendStreamingRenderRef,
     autoExpandedThinkingKeysRef,
     streamingTextSegmentsRef, activeTextSegmentIndexRef,
@@ -301,9 +304,11 @@ const App = () => {
     handleSubmit: hookHandleSubmit,
     executeMessage,
     interruptSession,
+    lastReplayablePromptContextRef,
+    regenerateLastAssistant,
   } = useMessageSender({
     t, addToast,
-    currentProvider, permissionMode, selectedAgent,
+    currentProvider, selectedModel, permissionMode, reasoningEffort, selectedAgent,
     sdkStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
@@ -311,7 +316,18 @@ const App = () => {
     setSettingsInitialTab, setCurrentView,
     forceCreateNewSession,
     handleModeSelect,
+    pendingRegenerationRef,
   });
+
+  // Whether the last assistant message can be regenerated
+  const canRegenerateLastAssistant = useMemo(() => {
+    const last = mergedMessages[mergedMessages.length - 1];
+    return !!last
+      && last.type === 'assistant'
+      && !streamingActive
+      && !loading
+      && !!lastReplayablePromptContextRef.current;
+  }, [mergedMessages, streamingActive, loading]);
 
   // ── Message queue ──
   const {
@@ -547,6 +563,8 @@ const App = () => {
                   setSettingsInitialTab('providers');
                   setCurrentView('settings');
                 }}
+                canRegenerateLastAssistant={canRegenerateLastAssistant}
+                onRegenerateLastAssistant={regenerateLastAssistant}
               />
             </div>
           </div>

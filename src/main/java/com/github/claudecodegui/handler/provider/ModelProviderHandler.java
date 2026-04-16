@@ -207,15 +207,19 @@ public class ModelProviderHandler {
             return baseModel;
         }
 
+        String lowerBaseModel = baseModel.toLowerCase();
+        boolean isClaudeFamilySelector = lowerBaseModel.equals("sonnet")
+                || lowerBaseModel.equals("haiku")
+                || lowerBaseModel.equals("opus")
+                || lowerBaseModel.startsWith("claude-")
+                || lowerBaseModel.startsWith("claude_");
+        if (!isClaudeFamilySelector) {
+            return baseModel;
+        }
+
         String mainModel = readConfiguredEnvValue(env, "ANTHROPIC_MODEL");
         if (mainModel != null) {
             return mainModel;
-        }
-
-        String lowerBaseModel = baseModel.toLowerCase();
-        boolean isClaudeModel = lowerBaseModel.startsWith("claude-") || lowerBaseModel.startsWith("claude_");
-        if (!isClaudeModel) {
-            return baseModel;
         }
 
         if (lowerBaseModel.contains("opus")) {

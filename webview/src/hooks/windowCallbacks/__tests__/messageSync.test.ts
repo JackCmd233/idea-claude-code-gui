@@ -6,6 +6,7 @@ import {
   appendOptimisticMessageIfMissing,
   ensureStreamingAssistantInList,
   getRawUuid,
+  preservePendingRegenerationPlaceholder,
   preserveLastAssistantIdentity,
   preserveMessageIdentity,
   preserveStreamingAssistantContent,
@@ -588,5 +589,44 @@ describe('ensureStreamingAssistantInList', () => {
     const { list, streamingIndex } = ensureStreamingAssistantInList(prev, result, false, 0);
     expect(list).toBe(result);
     expect(streamingIndex).toBe(-1);
+  });
+});
+
+describe('preservePendingRegenerationPlaceholder', () => {
+  it('replaces a stale last assistant group with the local regenerate placeholder before stream start', () => {
+    const prev = [
+      makeUserMsg('Explain this diff', { timestamp: '2026-04-16T10:00:00.000Z' }),
+      makeAssistantMsg('', {
+        timestamp: '2026-04-16T10:00:01.000Z',
+        isStreaming: true,
+        raw: { message: { content: [] } } as any,
+      }),
+    ];
+
+    const staleSnapshot = [
+      makeUserMsg('Explain this diff', { timestamp: '2026-04-16T10:00:00.000Z' }),
+      makeAssistantMsg('tool phase', {
+        timestamp: '2026-04-16T09:59:59.000Z',
+        raw: { content: [{ type: 'tool_use', id: 'tool-1', name: 'shell_command', input: { command: 'git diff' } }] } as any,
+      }),
+      makeAssistantMsg('old answer', {
+        timestamp: '2026-04-16T10:00:02.000Z',
+        raw: { content: [{ type: 'text', text: 'old answer' }] } as any,
+      }),
+    ];
+
+    const result = preservePendingRegenerationPlaceholder(
+      prev,
+      staleSnapshot,
+      ref({ placeholderTimestamp: '2026-04-16T10:00:01.000Z' }),
+      (raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        const rawObj = raw as { content?: unknown; message?: { content?: unknown } };
+        const blocks = rawObj.content ?? rawObj.message?.content;
+        return Array.isArray(blocks) ? (blocks as any[]) : [];
+      },
+    );
+
+    expect(result).toEqual(prev);
   });
 });

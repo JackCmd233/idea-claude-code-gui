@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClaudeContentBlock, ClaudeMessage, ToolResultBlock } from '../../types';
 import { extractMarkdownContent } from '../../utils/copyUtils';
@@ -35,6 +35,7 @@ const t = ((key: string) => {
     'markdown.copySuccess': '已复制',
     'chat.streamingConnected': '已连接',
     'chat.totalDuration': '本次耗时',
+    'chat.regenerateResponse': '重新生成回答',
   };
   return translations[key] ?? key;
 }) as any;
@@ -149,5 +150,76 @@ describe('MessageItem copy button visibility', () => {
 
     expect(screen.getByTestId('bash-tool-group-block')).toBeTruthy();
     expect(screen.queryAllByTestId('content-block-tool_use')).toHaveLength(0);
+  });
+});
+
+describe('MessageItem regenerate button', () => {
+  it('shows regenerate button only for the last completed assistant message', () => {
+    render(
+      <MessageItem
+        message={{ type: 'assistant', content: 'done', timestamp: '2026-04-15T00:00:00.000Z' }}
+        messageIndex={2}
+        messageKey="assistant-last"
+        isLast={true}
+        streamingActive={false}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        canRegenerate={true}
+        onRegenerate={() => {}}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '重新生成回答' })).toBeTruthy();
+  });
+
+  it('hides regenerate button while assistant message is streaming', () => {
+    render(
+      <MessageItem
+        message={{ type: 'assistant', content: '', isStreaming: true }}
+        messageIndex={2}
+        messageKey="assistant-last"
+        isLast={true}
+        streamingActive={true}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        canRegenerate={true}
+        onRegenerate={() => {}}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '重新生成回答' })).toBeNull();
+  });
+
+  it('calls onRegenerate when regenerate button is clicked', () => {
+    const onRegenerate = vi.fn();
+
+    render(
+      <MessageItem
+        message={{ type: 'assistant', content: 'done', timestamp: '2026-04-15T00:00:00.000Z' }}
+        messageIndex={2}
+        messageKey="assistant-last"
+        isLast={true}
+        streamingActive={false}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        canRegenerate={true}
+        onRegenerate={onRegenerate}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '重新生成回答' }));
+    expect(onRegenerate).toHaveBeenCalledTimes(1);
   });
 });

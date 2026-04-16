@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaudeMessage } from '../types';
-import { getMessageKey, mergeConsecutiveAssistantMessages } from './messageUtils';
+import {
+  findLastVisibleAssistantGroupRange,
+  getMessageKey,
+  mergeConsecutiveAssistantMessages,
+} from './messageUtils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -144,5 +148,53 @@ describe('mergeConsecutiveAssistantMessages', () => {
     expect(result).toHaveLength(1);
     const mergedRaw = result[0].raw as { content?: Array<{ type?: string; id?: string }> };
     expect(mergedRaw.content?.filter((block) => block.type === 'tool_use').map((block) => block.id)).toEqual(['tool-1', 'tool-2']);
+  });
+});
+
+describe('findLastVisibleAssistantGroupRange', () => {
+  const normalizeBlocks = (raw: unknown): any[] => {
+    if (!raw || typeof raw !== 'object') return [];
+    const r = raw as any;
+    const blocks = r.content ?? r.message?.content;
+    return Array.isArray(blocks) ? blocks : [];
+  };
+
+  it('returns the raw range for the last visible assistant group made of multiple assistant fragments', () => {
+    const messages: ClaudeMessage[] = [
+      makeMsg('user', 'question-1'),
+      makeMsg('assistant', 'tool phase', {
+        raw: { content: [{ type: 'text', text: 'tool phase' }] } as any,
+      }),
+      makeMsg('assistant', 'final phase', {
+        raw: { content: [{ type: 'text', text: 'final phase' }] } as any,
+      }),
+    ];
+
+    expect(findLastVisibleAssistantGroupRange(messages, normalizeBlocks)).toEqual({
+      startIndex: 1,
+      endIndex: 2,
+    });
+  });
+
+  it('keeps tool_result-only user messages inside the same visible assistant group range', () => {
+    const messages: ClaudeMessage[] = [
+      makeMsg('user', 'question-1'),
+      makeMsg('assistant', '', {
+        raw: {
+          content: [{ type: 'tool_use', id: 'tool-1', name: 'shell_command', input: { command: 'pwd' } }],
+        } as any,
+      }),
+      makeMsg('user', '[tool_result]', {
+        raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'D:/Code/idea-claude-code-gui' }] } as any,
+      }),
+      makeMsg('assistant', 'done', {
+        raw: { content: [{ type: 'text', text: 'done' }] } as any,
+      }),
+    ];
+
+    expect(findLastVisibleAssistantGroupRange(messages, normalizeBlocks)).toEqual({
+      startIndex: 1,
+      endIndex: 3,
+    });
   });
 });

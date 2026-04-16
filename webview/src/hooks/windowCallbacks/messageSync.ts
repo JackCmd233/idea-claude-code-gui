@@ -8,6 +8,7 @@
 
 import type { MutableRefObject } from 'react';
 import type { ClaudeContentOrResultBlock, ClaudeMessage, ClaudeRawMessage } from '../../types';
+import { findLastVisibleAssistantGroupRange } from '../../utils/messageUtils';
 
 /** Time window (ms) for matching optimistic messages with backend messages. */
 export const OPTIMISTIC_MESSAGE_TIME_WINDOW = 5000;
@@ -317,6 +318,48 @@ export const preserveLatestMessagesOnShrink = (
   }
 
   return [...nextList, ...preservedTail];
+};
+
+export const preservePendingRegenerationPlaceholder = (
+  prevList: ClaudeMessage[],
+  nextList: ClaudeMessage[],
+  pendingRegenerationRef: MutableRefObject<{ placeholderTimestamp: string } | null>,
+  normalizeBlocks: (raw?: ClaudeMessage['raw']) => Array<Record<string, unknown>>,
+): ClaudeMessage[] => {
+  const pending = pendingRegenerationRef.current;
+  if (!pending) {
+    return nextList;
+  }
+
+  const placeholder = prevList[prevList.length - 1];
+  if (
+    placeholder?.type !== 'assistant' ||
+    !placeholder.isStreaming ||
+    placeholder.timestamp !== pending.placeholderTimestamp
+  ) {
+    return nextList;
+  }
+
+  const alreadyPreserved = nextList.some(
+    (message) =>
+      message.type === 'assistant' &&
+      message.timestamp === pending.placeholderTimestamp &&
+      message.isStreaming,
+  );
+  if (alreadyPreserved) {
+    return nextList;
+  }
+
+  const staleRange = findLastVisibleAssistantGroupRange(nextList, normalizeBlocks as any);
+  if (!staleRange) {
+    return nextList;
+  }
+
+  return [
+    ...nextList.slice(0, staleRange.startIndex),
+    placeholder,
+    ...nextList.slice(staleRange.endIndex + 1),
+  ];
 };
 
 // ---------------------------------------------------------------------------

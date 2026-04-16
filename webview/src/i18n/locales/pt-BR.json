@@ -89,7 +89,8 @@
     "attachmentsUploaded": "[Anexos Enviados]",
     "streamingConnected": "Claude conectado, entendendo sua pergunta",
     "showEarlierMessages": "Mostrar {{count}} mensagens anteriores",
-    "totalDuration": "Esta resposta levou"
+    "totalDuration": "Esta resposta levou",
+    "regenerateResponse": "Regenerar resposta"
   },
   "settings": {
     "title": "Configurações",

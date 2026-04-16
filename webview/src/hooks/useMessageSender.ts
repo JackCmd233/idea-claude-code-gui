@@ -1,9 +1,20 @@
-import { useCallback, type RefObject } from 'react';
+import { useCallback, useRef, type MutableRefObject, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, SelectedAgent } from '../components/ChatInputBox/types';
 import type { ViewMode } from './useModelProviderState';
+import type { PendingRegenerationState } from './useWindowCallbacks';
+import { findLastVisibleAssistantGroupRange } from '../utils/messageUtils';
+
+/**
+ * Captured user prompt context that can be replayed for response regeneration.
+ */
+export interface ReplayablePromptContext {
+  text: string;
+  attachments?: Attachment[];
+  fileTagsInfo?: { displayPath: string; absolutePath: string }[] | null;
+}
 
 /**
  * Command sets for local handling (shared with App.tsx to avoid duplication)
@@ -12,11 +23,22 @@ export const NEW_SESSION_COMMANDS = new Set(['/new', '/clear', '/reset']);
 export const RESUME_COMMANDS = new Set(['/resume', '/continue']);
 export const PLAN_COMMANDS = new Set(['/plan']);
 
+const normalizeBlocksForAssistantGrouping = (raw?: ClaudeMessage['raw']) => {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const rawObj = raw as { content?: unknown; message?: { content?: unknown } };
+  const blocks = rawObj.content ?? rawObj.message?.content;
+  return Array.isArray(blocks) ? (blocks as ClaudeContentBlock[]) : null;
+};
+
 export interface UseMessageSenderOptions {
   t: TFunction;
   addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   currentProvider: string;
+  selectedModel: string;
   permissionMode: PermissionMode;
+  reasoningEffort: string;
   selectedAgent: SelectedAgent | null;
   sdkStatusLoaded: boolean;
   currentSdkInstalled: boolean;
@@ -26,6 +48,7 @@ export interface UseMessageSenderOptions {
   isUserAtBottomRef: RefObject<boolean>;
   userPausedRef: RefObject<boolean>;
   isStreamingRef: RefObject<boolean>;
+  pendingRegenerationRef: MutableRefObject<PendingRegenerationState | null>;
   setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
@@ -43,7 +66,9 @@ export function useMessageSender({
   t,
   addToast,
   currentProvider,
+  selectedModel,
   permissionMode,
+  reasoningEffort,
   selectedAgent,
   sdkStatusLoaded,
   currentSdkInstalled,
@@ -53,6 +78,7 @@ export function useMessageSender({
   isUserAtBottomRef,
   userPausedRef,
   isStreamingRef,
+  pendingRegenerationRef,
   setMessages,
   setLoading,
   setLoadingStartTime,
@@ -62,6 +88,9 @@ export function useMessageSender({
   forceCreateNewSession,
   handleModeSelect,
 }: UseMessageSenderOptions) {
+  /** Stores the last user prompt context for regeneration */
+  const lastReplayablePromptContextRef = useRef<ReplayablePromptContext | null>(null);
+
   /**
    * Check if the input is a new session command
    */
@@ -311,6 +340,13 @@ export function useMessageSender({
       absolutePath: tag.absolutePath,
     })) : null;
 
+    // Capture replayable prompt context for regeneration
+    lastReplayablePromptContextRef.current = {
+      text,
+      attachments,
+      fileTagsInfo,
+    };
+
     // Send message to backend
     sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo, permissionMode);
   }, [
@@ -359,9 +395,110 @@ export function useMessageSender({
     sendBridgeEvent('interrupt_session');
   }, []);
 
+  /**
+   * Regenerate the last assistant response in place.
+   * Clears the last assistant message and re-sends using the stored prompt context
+   * with the current runtime configuration (provider, model, mode, reasoning, agent).
+   */
+  const regenerateLastAssistant = useCallback(() => {
+    const replayable = lastReplayablePromptContextRef.current;
+    if (!replayable) return;
+
+    let replaced = false;
+    let placeholderTimestamp: string | null = null;
+
+    // Clear the last visible assistant group and mark it as streaming
+    setMessages((prev) => {
+      const groupRange = findLastVisibleAssistantGroupRange(prev, normalizeBlocksForAssistantGrouping);
+      if (!groupRange) return prev;
+
+      const anchorMessage = prev[groupRange.startIndex];
+      const anchorRaw =
+        typeof anchorMessage.raw === 'object' && anchorMessage.raw
+          ? (anchorMessage.raw as Record<string, unknown>)
+          : null;
+      placeholderTimestamp = anchorMessage.timestamp ?? new Date().toISOString();
+      const placeholderRaw = anchorRaw
+        ? {
+            ...anchorRaw,
+            content: [],
+            message: {
+              ...(typeof anchorRaw.message === 'object' && anchorRaw.message
+                ? (anchorRaw.message as Record<string, unknown>)
+                : {}),
+              content: [],
+            },
+          }
+        : { message: { content: [] } };
+
+      replaced = true;
+      return [
+        ...prev.slice(0, groupRange.startIndex),
+        {
+          type: 'assistant',
+          content: '',
+          timestamp: placeholderTimestamp,
+          isStreaming: true,
+          raw: placeholderRaw as ClaudeMessage['raw'],
+        },
+        ...prev.slice(groupRange.endIndex + 1),
+      ];
+    });
+
+    if (!replaced || !placeholderTimestamp) {
+      return;
+    }
+
+    pendingRegenerationRef.current = { placeholderTimestamp };
+
+    // Match the normal send path: only loading starts here.
+    // The global streaming state must be driven by backend stream callbacks,
+    // otherwise showLoading(false) cleanup can be suppressed indefinitely.
+    setLoading(true);
+    setLoadingStartTime(Date.now());
+
+    // Sync current runtime configuration
+    sendBridgeEvent('set_provider', currentProvider);
+    sendBridgeEvent('set_model', selectedModel);
+    const effectivePermissionMode = currentProvider === 'codex' && permissionMode === 'plan'
+      ? 'default'
+      : permissionMode;
+    sendBridgeEvent('set_mode', effectivePermissionMode);
+    sendBridgeEvent('set_reasoning_effort', reasoningEffort);
+    sendBridgeEvent(
+      'set_selected_agent',
+      selectedAgent
+        ? JSON.stringify({ id: selectedAgent.id, name: selectedAgent.name, prompt: selectedAgent.prompt })
+        : ''
+    );
+
+    // Build agent info and re-send
+    const agentInfo = selectedAgent
+      ? { id: selectedAgent.id, name: selectedAgent.name, prompt: selectedAgent.prompt }
+      : null;
+
+    sendMessageToBackend(
+      replayable.text,
+      replayable.attachments,
+      agentInfo,
+      replayable.fileTagsInfo ?? null,
+      permissionMode
+    );
+  }, [
+    currentProvider,
+    pendingRegenerationRef,
+    selectedModel,
+    permissionMode,
+    reasoningEffort,
+    selectedAgent,
+    sendMessageToBackend,
+  ]);
+
   return {
     handleSubmit,
     executeMessage,
     interruptSession,
+    lastReplayablePromptContextRef,
+    regenerateLastAssistant,
   };
 }

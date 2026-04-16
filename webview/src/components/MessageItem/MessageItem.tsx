@@ -33,6 +33,8 @@ export interface MessageItemProps {
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
   onNavigateToProviderSettings?: () => void;
   toolResultSignature?: string;
+  canRegenerate?: boolean;
+  onRegenerate?: () => void;
 }
 
 type GroupedBlock =
@@ -77,6 +79,28 @@ const CopyButton = memo(function CopyButton({
         <CopyIcon />
       </span>
       <span className="copy-tooltip">{copySuccessText}</span>
+    </button>
+  );
+});
+
+const RegenerateButton = memo(function RegenerateButton({
+  onClick,
+  regenerateLabel,
+}: {
+  onClick: () => void;
+  regenerateLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="message-copy-btn"
+      onClick={onClick}
+      title={regenerateLabel}
+      aria-label={regenerateLabel}
+    >
+      <span className="copy-icon">
+        <span className="codicon codicon-refresh"></span>
+      </span>
     </button>
   );
 });
@@ -220,6 +244,8 @@ export const MessageItem = memo(function MessageItem({
   onNodeRef,
   onNavigateToProviderSettings,
   toolResultSignature: _toolResultSignature,
+  canRegenerate,
+  onRegenerate,
 }: MessageItemProps): React.ReactElement {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [showStreamingConnectHint, setShowStreamingConnectHint] = useState(false);
@@ -555,13 +581,23 @@ export const MessageItem = memo(function MessageItem({
       )}
 
       {/* Copy button for assistant messages only */}
-      {message.type === 'assistant' && !isMessageStreaming && hasCopyableText && (
-        <CopyButton
-          isCopied={copiedMessageIndex === messageIndex}
-          onClick={handleCopyMessage}
-          copyLabel={t('markdown.copyMessage')}
-          copySuccessText={t('markdown.copySuccess')}
-        />
+      {message.type === 'assistant' && !isMessageStreaming && (hasCopyableText || (canRegenerate && onRegenerate)) && (
+        <div className="assistant-actions">
+          {hasCopyableText && (
+            <CopyButton
+              isCopied={copiedMessageIndex === messageIndex}
+              onClick={handleCopyMessage}
+              copyLabel={t('markdown.copyMessage')}
+              copySuccessText={t('markdown.copySuccess')}
+            />
+          )}
+          {canRegenerate && onRegenerate && (
+            <RegenerateButton
+              onClick={onRegenerate}
+              regenerateLabel={t('chat.regenerateResponse')}
+            />
+          )}
+        </div>
       )}
 
       {/* Role label for non-user/assistant messages */}

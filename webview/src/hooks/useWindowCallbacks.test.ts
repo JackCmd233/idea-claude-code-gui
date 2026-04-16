@@ -55,6 +55,7 @@ describe('useWindowCallbacks integration', () => {
     isUserAtBottomRef: { current: true },
     userPausedRef: { current: false },
     suppressNextStatusToastRef: { current: false },
+    pendingRegenerationRef: { current: null },
     streamingContentRef: { current: '' },
     isStreamingRef: { current: false },
     useBackendStreamingRenderRef: { current: false },
@@ -456,5 +457,52 @@ describe('useWindowCallbacks integration', () => {
       id: 'spawn-1',
     });
     expect(nextMessages[0].__turnId).toBe(7);
+  });
+
+  it('keeps the local regenerate placeholder when a stale snapshot arrives before onStreamStart', () => {
+    const opts = createOptions({
+      pendingRegenerationRef: { current: { placeholderTimestamp: '2026-04-16T10:00:01.000Z' } },
+      extractRawBlocks: (raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        const rawObj = raw as { content?: unknown; message?: { content?: unknown } };
+        const blocks = rawObj.content ?? rawObj.message?.content;
+        return Array.isArray(blocks) ? (blocks as Array<Record<string, unknown>>) : [];
+      },
+    });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      (window as any).updateMessages(JSON.stringify([
+        { type: 'user', content: 'Explain this diff', timestamp: '2026-04-16T10:00:00.000Z' },
+        {
+          type: 'assistant',
+          content: 'old fragment',
+          timestamp: '2026-04-16T09:59:59.000Z',
+          raw: { content: [{ type: 'tool_use', id: 'tool-1', name: 'shell_command', input: { command: 'git diff' } }] },
+        },
+        {
+          type: 'assistant',
+          content: 'old answer',
+          timestamp: '2026-04-16T10:00:02.000Z',
+          raw: { content: [{ type: 'text', text: 'old answer' }] },
+        },
+      ]));
+    });
+
+    const updater = (opts.setMessages as any).mock.calls[0][0] as (messages: ClaudeMessage[]) => ClaudeMessage[];
+    const next = updater([
+      { type: 'user', content: 'Explain this diff', timestamp: '2026-04-16T10:00:00.000Z' },
+      { type: 'assistant', content: '', isStreaming: true, timestamp: '2026-04-16T10:00:01.000Z', raw: { message: { content: [] } } as any },
+    ]);
+
+    expect(next).toEqual([
+      { type: 'user', content: 'Explain this diff', timestamp: '2026-04-16T10:00:00.000Z' },
+      expect.objectContaining({
+        type: 'assistant',
+        content: '',
+        isStreaming: true,
+        timestamp: '2026-04-16T10:00:01.000Z',
+      }),
+    ]);
   });
 });
