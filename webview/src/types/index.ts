@@ -1,5 +1,68 @@
 export type ClaudeRole = 'user' | 'assistant' | 'error' | string;
 
+// Fork snapshot types for session forking feature
+export interface ForkAttachmentSnapshot {
+  id: string;
+  fileName: string;
+  mediaType: string;
+  data: string;
+}
+
+export interface ForkFileTagSnapshot {
+  displayPath: string;
+  absolutePath: string;
+}
+
+export interface SentUserContextSnapshot {
+  messageKey: string;
+  text: string;
+  attachments: ForkAttachmentSnapshot[];
+  fileTags: ForkFileTagSnapshot[];
+  timestamp: string;
+}
+
+export interface ForkDisplaySnapshot {
+  sourceTabId: string | null;
+  sourceSessionId: string | null;
+  forkedFromMessageKey: string;
+  forkedFromMessageType: 'user' | 'assistant';
+  titleBase: string;
+  messages: ClaudeMessage[];
+}
+
+export interface ForkReplayTurn {
+  role: 'user' | 'assistant';
+  text: string;
+  attachments: ForkAttachmentSnapshot[];
+  fileTags: ForkFileTagSnapshot[];
+}
+
+export interface ForkSeedInput {
+  text: string;
+  attachments: ForkAttachmentSnapshot[];
+  fileTags: ForkFileTagSnapshot[];
+  sourceUserMessageKey: string;
+}
+
+export interface ForkReplaySnapshot {
+  provider: 'claude';
+  turns: ForkReplayTurn[];
+  seedInput: ForkSeedInput;
+  forkTitle: string;
+}
+
+export interface ForkSessionPayload {
+  display: ForkDisplaySnapshot;
+  replay: ForkReplaySnapshot;
+}
+
+export interface ForkInitState {
+  display: ForkDisplaySnapshot;
+  replay: ForkReplaySnapshot;
+  forkPending: boolean;
+  initializationError: string | null;
+}
+
 export type ToolInput = Record<string, unknown>;
 
 export type ClaudeContentBlock =
@@ -34,6 +97,12 @@ export interface ClaudeMessage {
   timestamp?: string;
   isStreaming?: boolean;
   isOptimistic?: boolean;
+  /**
+   * Snapshot of user context captured at send time for fork replay.
+   * Only present on user messages. Contains the original text, attachments,
+   * and file tags needed to replay the message in a forked session.
+   */
+  sentUserContextSnapshot?: SentUserContextSnapshot;
   /**
    * Runtime-only: numeric turn identifier for streaming assistant isolation.
    * Set by frontend during streaming to distinguish messages from different
