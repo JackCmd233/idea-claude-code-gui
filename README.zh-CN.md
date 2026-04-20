@@ -24,7 +24,7 @@
 
 ## 插件下载
 
-[IDEA Claude Code GUI 下载](https://plugins.jetbrains.com/plugin/30666-cc-gui)
+[CC GUI（Claude or Codex） 下载](https://plugins.jetbrains.com/plugin/29342-cc-gui-claude-or-codex-)
 
 ---
 

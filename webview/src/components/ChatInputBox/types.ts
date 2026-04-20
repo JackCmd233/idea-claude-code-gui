@@ -251,7 +251,66 @@ export interface ModelInfo {
 }
 
 /**
- * Claude model list
+ * Check if a model supports 1M context window.
+ * All models support 1M except Haiku (matched by name substring).
+ */
+export function modelSupports1MContext(modelId: string | undefined | null): boolean {
+  if (!modelId) {
+    return false;
+  }
+  return !modelId.replace(/\[1m\]$/i, '').toLowerCase().includes('haiku');
+}
+
+/**
+ * Check if a model ID already has [1m] suffix.
+ */
+export function has1MContextSuffix(modelId: string | undefined | null): boolean {
+  if (!modelId) {
+    return false;
+  }
+  return /\[1m\]$/i.test(modelId);
+}
+
+/**
+ * Apply [1m] suffix to model ID if supported and enabled.
+ * Returns the original model ID if the model doesn't support 1M context.
+ */
+export function apply1MContextSuffix(modelId: string, enabled: boolean): string {
+  if (!enabled || !modelSupports1MContext(modelId)) {
+    // Remove any existing [1m] suffix if disabled
+    return modelId.replace(/\[1m\]$/i, '');
+  }
+  // Remove existing suffix first, then add new one
+  const baseId = modelId.replace(/\[1m\]$/i, '');
+  return `${baseId}[1m]`;
+}
+
+/**
+ * Remove [1m] suffix from model ID for display/storage purposes.
+ */
+export function strip1MContextSuffix(modelId: string | undefined | null): string {
+  if (!modelId) {
+    return '';
+  }
+  return modelId.replace(/\[1m\]$/i, '');
+}
+
+const LEGACY_CLAUDE_MODEL_ID_ALIASES: Record<string, string> = {
+  'claude-opus-4-6[1m]': 'claude-opus-4-6',
+};
+
+export function normalizeClaudeModelId(modelId: string | undefined | null): string {
+  if (!modelId) {
+    return 'claude-sonnet-4-6';
+  }
+  // First strip any [1m] suffix
+  const stripped = strip1MContextSuffix(modelId);
+  return LEGACY_CLAUDE_MODEL_ID_ALIASES[stripped] ?? stripped;
+}
+
+/**
+ * Claude model list (base IDs without [1m] suffix).
+ * The 1M context suffix is applied dynamically via toggle.
  */
 export const CLAUDE_MODELS: ModelInfo[] = [
   {
@@ -260,13 +319,13 @@ export const CLAUDE_MODELS: ModelInfo[] = [
     description: 'Sonnet 4.6 · Use the default model',
   },
   {
-    id: 'claude-opus-4-6',
-    label: 'Opus 4.6',
-    description: 'Opus 4.6 · Latest and most capable',
+    id: 'claude-opus-4-7',
+    label: 'Opus 4.7',
+    description: 'Opus 4.7 · Latest and most capable',
   },
   {
-    id: 'claude-opus-4-6[1m]',
-    label: 'Opus (1M context)',
+    id: 'claude-opus-4-6',
+    label: 'Opus 4.6',
     description: 'Opus 4.6 for long sessions',
   },
   {
@@ -281,29 +340,44 @@ export const CLAUDE_MODELS: ModelInfo[] = [
  */
 export const CODEX_MODELS: ModelInfo[] = [
   {
-    id: 'gpt-5.3-codex',
-    label: 'gpt-5.3-codex',
-    description: 'Latest frontier agentic coding model with enhanced capabilities.',
-  },
-  {
     id: 'gpt-5.4',
-    label: 'gpt-5.4',
+    label: 'GPT-5.4',
     description: 'Latest frontier model with enhanced capabilities.',
   },
   {
     id: 'gpt-5.2-codex',
-    label: 'gpt-5.2-codex',
-    description: 'Latest frontier agentic coding model.',
+    label: 'GPT-5.2-Codex',
+    description: 'Frontier agentic coding model.',
   },
   {
     id: 'gpt-5.1-codex-max',
-    label: 'gpt-5.1-codex-max',
+    label: 'GPT-5.1-Codex-Max',
     description: 'Codex-optimized flagship for deep and fast reasoning.',
   },
   {
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4-Mini',
+    description: 'Smaller frontier agentic coding model.',
+  },
+  {
+    id: 'gpt-5.3-codex',
+    label: 'GPT-5.3-Codex',
+    description: 'Latest frontier agentic coding model with enhanced capabilities.',
+  },
+  {
+    id: 'gpt-5.3-codex-spark',
+    label: 'GPT-5.3-Codex-Spark',
+    description: 'Ultra-fast coding model.',
+  },
+  {
+    id: 'gpt-5.2',
+    label: 'GPT-5.2',
+    description: 'Optimized for professional work and long-running agents.',
+  },
+  {
     id: 'gpt-5.1-codex-mini',
-    label: 'gpt-5.1-codex-mini',
-    description: 'Optimized for codex. Cheaper, faster, but less capable.',
+    label: 'GPT-5.1-Codex-Mini',
+    description: 'Optimized for Codex. Cheaper, faster, but less capable.',
   },
 ];
 
@@ -535,6 +609,10 @@ export interface ChatInputBoxProps {
   autoOpenFileEnabled?: boolean;
   /** Toggle auto open file enabled */
   onAutoOpenFileEnabledChange?: (enabled: boolean) => void;
+  /** Whether long context (1M) is enabled */
+  longContextEnabled?: boolean;
+  /** Toggle long context callback */
+  onLongContextChange?: (enabled: boolean) => void;
 }
 
 /**
@@ -586,6 +664,10 @@ export interface ButtonAreaProps {
   onOpenAgentSettings?: () => void;
   /** Navigate to model management to add models */
   onAddModel?: () => void;
+  /** Whether long context (1M) is enabled */
+  longContextEnabled?: boolean;
+  /** Toggle long context callback */
+  onLongContextChange?: (enabled: boolean) => void;
 }
 
 /**
