@@ -89,7 +89,14 @@
     "attachmentsUploaded": "[Attachments Uploaded]",
     "streamingConnected": "Claude connected, understanding your question",
     "showEarlierMessages": "Show {{count}} earlier messages",
-    "totalDuration": "This reply took"
+    "totalDuration": "This reply took",
+    "forkMessage": "Fork from here",
+    "fork": {
+      "unsupportedProvider": "Forking is only available for Claude tabs.",
+      "unsupportedNode": "This message can no longer be forked.",
+      "missingSeedUserMessage": "This assistant message has no earlier user message to seed the fork.",
+      "incompleteContext": "This message no longer has complete fork context."
+    }
   },
   "settings": {
     "title": "Settings",

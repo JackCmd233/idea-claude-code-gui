@@ -53,9 +53,11 @@ import { AppDialogs } from './components/AppDialogs';
 import { APP_VERSION } from './version/version';
 import type {
   ClaudeMessage,
+  ForkSessionPayload,
   HistoryData,
   ToolResultBlock,
 } from './types';
+import { buildForkPayloadFromMessage } from './utils/forkUtils';
 
 const DEFAULT_STATUS = 'ready';
 
@@ -473,6 +475,26 @@ const App = () => {
     return text.length > 15 ? `${text.substring(0, 15)}...` : text;
   }, [customSessionTitle, messages, t, getMessageText]);
 
+  // ── Fork handling ──
+  const handleForkMessage = useCallback((messageKey: string, messageIndex: number) => {
+    const result = buildForkPayloadFromMessage({
+      messages: mergedMessages,
+      targetMessageKey: messageKey,
+      targetMessageIndex: messageIndex,
+      currentProvider,
+      currentSessionId,
+      currentTabTitle: sessionTitle,
+    });
+
+    if (!result.ok) {
+      addToast(t(result.error), 'error');
+      return;
+    }
+
+    const payload: ForkSessionPayload = result.value;
+    sendBridgeEvent('fork_session', JSON.stringify(payload));
+  }, [mergedMessages, currentProvider, currentSessionId, sessionTitle, addToast, t]);
+
   // ── Render ──
   return (
     <>
@@ -548,6 +570,7 @@ const App = () => {
                   setSettingsInitialTab('providers');
                   setCurrentView('settings');
                 }}
+                onForkMessage={handleForkMessage}
               />
             </div>
           </div>

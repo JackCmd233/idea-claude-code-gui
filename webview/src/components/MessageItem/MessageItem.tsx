@@ -32,6 +32,7 @@ export interface MessageItemProps {
   extractMarkdownContent: (message: ClaudeMessage) => string;
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
   onNavigateToProviderSettings?: () => void;
+  onForkMessage?: (messageKey: string, messageIndex: number) => void;
   toolResultSignature?: string;
 }
 
@@ -47,6 +48,14 @@ const CopyIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M4 4l0 8a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2 -2l0 -8a2 2 0 0 0 -2 -2l-8 0a2 2 0 0 0 -2 2zm2 0l8 0l0 8l-8 0l0 -8z" fill="currentColor" fillOpacity="0.9"/>
     <path d="M2 2l0 8l-2 0l0 -8a2 2 0 0 1 2 -2l8 0l0 2l-8 0z" fill="currentColor" fillOpacity="0.6"/>
+  </svg>
+);
+
+/** Fork icon SVG for session forking feature */
+const ForkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 2a2 2 0 1 1 0 4a2 2 0 0 1 0-4zm0 8a2 2 0 1 1 0 4a2 2 0 0 1 0-4zm8-4a2 2 0 1 1 0 4a2 2 0 0 1 0-4z" fill="currentColor" />
+    <path d="M6 4h2a3 3 0 0 1 3 3v0M6 12h2a3 3 0 0 0 3-3v0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
   </svg>
 );
 
@@ -219,6 +228,7 @@ export const MessageItem = memo(function MessageItem({
   extractMarkdownContent,
   onNodeRef,
   onNavigateToProviderSettings,
+  onForkMessage,
   toolResultSignature: _toolResultSignature,
 }: MessageItemProps): React.ReactElement {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
@@ -254,6 +264,17 @@ export const MessageItem = memo(function MessageItem({
 
   const isLastAssistantMessage = message.type === 'assistant' && isLast;
   const isMessageStreaming = streamingActive && isLastAssistantMessage;
+
+  // Fork button eligibility: user or assistant messages that are not streaming
+  const isEligibleForkMessage =
+    (message.type === 'user' || message.type === 'assistant') &&
+    !isMessageStreaming &&
+    Boolean(messageKey);
+
+  const handleForkMessage = useCallback(() => {
+    if (!isEligibleForkMessage || !onForkMessage) return;
+    onForkMessage(messageKey, messageIndex);
+  }, [isEligibleForkMessage, onForkMessage, messageKey, messageIndex]);
 
   // Cache markdown content extraction for better performance
   const markdownContent = useMemo(() => {
@@ -536,15 +557,57 @@ export const MessageItem = memo(function MessageItem({
       ref={anchorRefCallback}
       data-message-anchor-id={message.type === 'user' ? messageKey : undefined}
     >
-      {/* Timestamp and copy button for user messages */}
+      {/* Timestamp and actions for user messages */}
       {message.type === 'user' && message.timestamp && (
         <div className="message-header-row">
           <div className="message-timestamp-header">
             {formatTime(message.timestamp)}
           </div>
+          <div className="message-header-actions">
+            {isEligibleForkMessage && (
+              <button
+                type="button"
+                className="message-copy-btn message-copy-btn-inline"
+                onClick={handleForkMessage}
+                title={t('chat.forkMessage')}
+                aria-label={t('chat.forkMessage')}
+              >
+                <span className="copy-icon">
+                  <ForkIcon />
+                </span>
+              </button>
+            )}
+            {hasCopyableText && (
+              <CopyButton
+                className="message-copy-btn-inline"
+                isCopied={copiedMessageIndex === messageIndex}
+                onClick={handleCopyMessage}
+                copyLabel={t('markdown.copyMessage')}
+                copySuccessText={t('markdown.copySuccess')}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Actions for assistant messages */}
+      {message.type === 'assistant' && !isMessageStreaming && (
+        <div className="message-header-actions message-header-actions-assistant">
+          {isEligibleForkMessage && (
+            <button
+              type="button"
+              className="message-copy-btn"
+              onClick={handleForkMessage}
+              title={t('chat.forkMessage')}
+              aria-label={t('chat.forkMessage')}
+            >
+              <span className="copy-icon">
+                <ForkIcon />
+              </span>
+            </button>
+          )}
           {hasCopyableText && (
             <CopyButton
-              className="message-copy-btn-inline"
               isCopied={copiedMessageIndex === messageIndex}
               onClick={handleCopyMessage}
               copyLabel={t('markdown.copyMessage')}
@@ -552,16 +615,6 @@ export const MessageItem = memo(function MessageItem({
             />
           )}
         </div>
-      )}
-
-      {/* Copy button for assistant messages only */}
-      {message.type === 'assistant' && !isMessageStreaming && hasCopyableText && (
-        <CopyButton
-          isCopied={copiedMessageIndex === messageIndex}
-          onClick={handleCopyMessage}
-          copyLabel={t('markdown.copyMessage')}
-          copySuccessText={t('markdown.copySuccess')}
-        />
       )}
 
       {/* Role label for non-user/assistant messages */}

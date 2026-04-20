@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClaudeContentBlock, ClaudeMessage, ToolResultBlock } from '../../types';
 import { extractMarkdownContent } from '../../utils/copyUtils';
@@ -35,6 +35,7 @@ const t = ((key: string) => {
     'markdown.copySuccess': '已复制',
     'chat.streamingConnected': '已连接',
     'chat.totalDuration': '本次耗时',
+    'chat.forkMessage': 'Fork from here',
   };
   return translations[key] ?? key;
 }) as any;
@@ -149,5 +150,97 @@ describe('MessageItem copy button visibility', () => {
 
     expect(screen.getByTestId('bash-tool-group-block')).toBeTruthy();
     expect(screen.queryAllByTestId('content-block-tool_use')).toHaveLength(0);
+  });
+});
+
+describe('MessageItem fork button', () => {
+  it('renders fork button for eligible user messages and emits the callback', () => {
+    const onForkMessage = vi.fn();
+    render(
+      <MessageItem
+        message={{
+          type: 'user',
+          content: 'Fork me',
+          timestamp: '2026-04-21T10:00:00.000Z',
+          raw: {
+            uuid: 'uuid-user-fork',
+            message: { content: [{ type: 'text', text: 'Fork me' }] },
+          } as any,
+        }}
+        messageIndex={3}
+        messageKey="uuid-user-fork"
+        isLast={false}
+        streamingActive={false}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        onForkMessage={onForkMessage}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fork from here' }));
+
+    expect(onForkMessage).toHaveBeenCalledWith('uuid-user-fork', 3);
+  });
+
+  it('does not render fork button for streaming assistant placeholders', () => {
+    render(
+      <MessageItem
+        message={{
+          type: 'assistant',
+          content: '',
+          timestamp: '2026-04-21T10:00:00.000Z',
+          raw: { uuid: 'uuid-assistant-stream', message: { content: [] } } as any,
+        }}
+        messageIndex={4}
+        messageKey="uuid-assistant-stream"
+        isLast={true}
+        streamingActive={true}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        onForkMessage={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Fork from here' })).toBeNull();
+  });
+
+  it('renders fork button for completed assistant messages', () => {
+    const onForkMessage = vi.fn();
+    render(
+      <MessageItem
+        message={{
+          type: 'assistant',
+          content: 'Done',
+          timestamp: '2026-04-21T10:00:00.000Z',
+          raw: {
+            uuid: 'uuid-assistant-done',
+            message: { content: [{ type: 'text', text: 'Done' }] },
+          } as any,
+        }}
+        messageIndex={5}
+        messageKey="uuid-assistant-done"
+        isLast={false}
+        streamingActive={false}
+        isThinking={false}
+        t={t}
+        getMessageText={getMessageText}
+        getContentBlocks={getContentBlocks}
+        findToolResult={findToolResult}
+        extractMarkdownContent={extractMarkdownContent}
+        onForkMessage={onForkMessage}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fork from here' }));
+
+    expect(onForkMessage).toHaveBeenCalledWith('uuid-assistant-done', 5);
   });
 });
