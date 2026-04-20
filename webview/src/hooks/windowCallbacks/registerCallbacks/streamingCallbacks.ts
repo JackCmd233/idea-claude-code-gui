@@ -292,7 +292,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
             break;
           }
         }
-      } catch { /* ignore parse errors */ }
+      } catch (error) {
+        // __pendingUpdateJson is produced internally by the bridge; a parse failure
+        // indicates an upstream contract violation worth surfacing for diagnosis.
+        console.warn('[Frontend] Failed to parse __pendingUpdateJson on stream end:', error);
+      }
     }
 
     if (typeof window.__cancelPendingUpdateMessages === 'function') {
@@ -327,19 +331,28 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
     // Helper to measure total text length from raw blocks (for comparing completeness).
     // Handles both object and JSON string formats of raw.
+    type TextBlock = { type: 'text'; text: string };
+    const hasTextBlocks = (value: unknown): value is { message: { content: TextBlock[] } } => {
+      if (!value || typeof value !== 'object') return false;
+      const msg = (value as { message?: unknown }).message;
+      if (!msg || typeof msg !== 'object') return false;
+      const content = (msg as { content?: unknown }).content;
+      return Array.isArray(content);
+    };
     const getTextLenFromRaw = (raw: unknown): number => {
-      try {
-        let parsedRaw: unknown = raw;
-        if (typeof raw === 'string') {
+      let parsedRaw: unknown = raw;
+      if (typeof raw === 'string') {
+        try {
           parsedRaw = JSON.parse(raw);
+        } catch (error) {
+          console.warn('[Frontend] Failed to parse raw JSON for length comparison:', error);
+          return 0;
         }
-        const msg = (parsedRaw as Record<string, unknown>)?.message as Record<string, unknown> | undefined;
-        const content = msg?.content as Array<Record<string, unknown>> | undefined;
-        if (!Array.isArray(content)) return 0;
-        return content
-          .filter((b) => b?.type === 'text' && typeof b.text === 'string')
-          .reduce((sum, b) => sum + (b.text as string).length, 0);
-      } catch { return 0; }
+      }
+      if (!hasTextBlocks(parsedRaw)) return 0;
+      return parsedRaw.message.content
+        .filter((b): b is TextBlock => b?.type === 'text' && typeof b.text === 'string')
+        .reduce((sum, b) => sum + b.text.length, 0);
     };
 
     // FIX: Clear streaming refs BEFORE setMessages updater to prevent race conditions.

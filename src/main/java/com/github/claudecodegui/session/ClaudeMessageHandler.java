@@ -857,11 +857,19 @@ public class ClaudeMessageHandler implements MessageCallback {
                     ? lastTextBlock.get("text").getAsString() : "";
             precedingTextLength -= lastBlockText.length();
 
+            // Invariant: assistantContent must cover all preceding text blocks.
+            // A violation indicates raw blocks and the accumulator drifted, which is
+            // worth surfacing for diagnosis rather than silently producing an empty tail.
+            if (accumulatedText.length() < precedingTextLength) {
+                LOG.warn("ensureRawBlocksConsistency: accumulatedText (" + accumulatedText.length()
+                        + ") shorter than precedingTextLength (" + precedingTextLength
+                        + "); raw blocks may be out of sync with assistantContent");
+                return;
+            }
+
             // The expected content for the last block is the tail of assistantContent
             // starting from the end of all preceding text blocks.
-            String expectedLastBlockText = accumulatedText.length() > precedingTextLength
-                    ? accumulatedText.substring(precedingTextLength)
-                    : "";
+            String expectedLastBlockText = accumulatedText.substring(precedingTextLength);
             if (lastBlockText.length() < expectedLastBlockText.length()) {
                 lastTextBlock.addProperty("text", expectedLastBlockText);
             }
