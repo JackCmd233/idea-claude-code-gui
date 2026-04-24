@@ -891,6 +891,12 @@
     "clickToCopy": "Click to copy",
     "switch": "Switch",
     "switchProvider": "Switch provider",
+    "runtimeProvider": {
+      "title": "Switch Current Provider",
+      "loading": "Loading providers...",
+      "empty": "No providers available",
+      "switched": "Switched to {{provider}}"
+    },
     "link": "Link"
   },
   "markdown": {

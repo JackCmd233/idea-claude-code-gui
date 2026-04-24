@@ -253,6 +253,7 @@ export const ButtonArea = ({
           selectedAgent={selectedAgent}
           onAgentSelect={onAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
+          currentProvider={currentProvider}
         />
         <ProviderSelect
           value={currentProvider}
