@@ -26,6 +26,7 @@ public class PluginActionRegistrationTest {
     @Test
     public void copySelectionReferenceActionAppearsInEditorPopupMenuAfterSendSelectionAction() throws Exception {
         ActionRegistration action = getActionRegistration("ClaudeCodeGUI.CopySelectionReferenceAction");
+        ActionRegistration quickFixAction = getActionRegistration("ClaudeCodeGUI.QuickFixWithClaudeAction");
 
         Assert.assertEquals(
                 "com.github.claudecodegui.action.editor.CopySelectionReferenceAction",
@@ -34,6 +35,7 @@ public class PluginActionRegistrationTest {
         AddToGroupRegistration editorPopup = action.getAddToGroup("EditorPopupMenu");
         Assert.assertEquals("after", editorPopup.anchor);
         Assert.assertEquals("ClaudeCodeGUI.SendSelectionToTerminalAction", editorPopup.relativeToAction);
+        Assert.assertTrue(action.declarationIndex < quickFixAction.declarationIndex);
     }
 
     private static Set<String> getActionGroupIds(String actionId) throws Exception {
@@ -58,7 +60,7 @@ public class PluginActionRegistrationTest {
                             addToGroup.getAttribute("relative-to-action")
                     ));
                 }
-                return new ActionRegistration(action.getAttribute("class"), addToGroupRegistrations);
+                return new ActionRegistration(action.getAttribute("class"), addToGroupRegistrations, i);
             }
         }
         throw new AssertionError("Action not found: " + actionId);
@@ -67,10 +69,16 @@ public class PluginActionRegistrationTest {
     private static final class ActionRegistration {
         private final String actionClass;
         private final List<AddToGroupRegistration> addToGroupRegistrations;
+        private final int declarationIndex;
 
-        private ActionRegistration(String actionClass, List<AddToGroupRegistration> addToGroupRegistrations) {
+        private ActionRegistration(
+                String actionClass,
+                List<AddToGroupRegistration> addToGroupRegistrations,
+                int declarationIndex
+        ) {
             this.actionClass = actionClass;
             this.addToGroupRegistrations = addToGroupRegistrations;
+            this.declarationIndex = declarationIndex;
         }
 
         private Set<String> getGroupIds() {
