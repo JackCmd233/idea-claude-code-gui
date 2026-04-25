@@ -38,6 +38,17 @@ public class PluginActionRegistrationTest {
         Assert.assertTrue(action.declarationIndex < quickFixAction.declarationIndex);
     }
 
+    @Test
+    public void editorPopupActionsUseExpectedIcons() throws Exception {
+        ActionRegistration sendSelectionAction = getActionRegistration("ClaudeCodeGUI.SendSelectionToTerminalAction");
+        ActionRegistration copyReferenceAction = getActionRegistration("ClaudeCodeGUI.CopySelectionReferenceAction");
+        ActionRegistration quickFixAction = getActionRegistration("ClaudeCodeGUI.QuickFixWithClaudeAction");
+
+        Assert.assertEquals("/icons/send-to-terminal.svg", sendSelectionAction.icon);
+        Assert.assertEquals("/icons/cc-gui-icon.svg", copyReferenceAction.icon);
+        Assert.assertEquals("/icons/quick-fix.svg", quickFixAction.icon);
+    }
+
     private static Set<String> getActionGroupIds(String actionId) throws Exception {
         return getActionRegistration(actionId).getGroupIds();
     }
@@ -60,7 +71,12 @@ public class PluginActionRegistrationTest {
                             addToGroup.getAttribute("relative-to-action")
                     ));
                 }
-                return new ActionRegistration(action.getAttribute("class"), addToGroupRegistrations, i);
+                return new ActionRegistration(
+                        action.getAttribute("class"),
+                        action.getAttribute("icon"),
+                        addToGroupRegistrations,
+                        i
+                );
             }
         }
         throw new AssertionError("Action not found: " + actionId);
@@ -68,15 +84,18 @@ public class PluginActionRegistrationTest {
 
     private static final class ActionRegistration {
         private final String actionClass;
+        private final String icon;
         private final List<AddToGroupRegistration> addToGroupRegistrations;
         private final int declarationIndex;
 
         private ActionRegistration(
                 String actionClass,
+                String icon,
                 List<AddToGroupRegistration> addToGroupRegistrations,
                 int declarationIndex
         ) {
             this.actionClass = actionClass;
+            this.icon = icon;
             this.addToGroupRegistrations = addToGroupRegistrations;
             this.declarationIndex = declarationIndex;
         }
