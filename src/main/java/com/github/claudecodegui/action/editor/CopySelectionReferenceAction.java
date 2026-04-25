@@ -108,6 +108,7 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
         if (!result.isSuccess()) {
             SelectionReferenceFailureHandler.showBuildFailure(
                     result,
+                    "action.copyAiReference.selectCodeFirst",
                     message -> showInfo(project, message),
                     message -> showError(project, message)
             );

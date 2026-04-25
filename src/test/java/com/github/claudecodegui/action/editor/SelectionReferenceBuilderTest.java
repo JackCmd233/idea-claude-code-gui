@@ -94,6 +94,16 @@ public class SelectionReferenceBuilderTest {
         Assert.assertEquals("send.cannotGetFile", fileResult.getMessageKey());
     }
 
+    @Test
+    public void successRejectsNullReference() {
+        NullPointerException exception = Assert.assertThrows(
+                NullPointerException.class,
+                () -> SelectionReferenceBuilder.Result.success(null)
+        );
+
+        Assert.assertEquals("reference", exception.getMessage());
+    }
+
     private static Editor createEditor(String selectedText, int startLineNumber, int endLineNumber, int endColumn) {
         SelectionModel selectionModel = (SelectionModel) Proxy.newProxyInstance(
                 SelectionModel.class.getClassLoader(),

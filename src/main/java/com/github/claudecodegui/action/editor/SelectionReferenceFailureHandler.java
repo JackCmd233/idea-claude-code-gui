@@ -14,6 +14,7 @@ final class SelectionReferenceFailureHandler {
     }
 
     static void showBuildFailure(@NotNull SelectionReferenceBuilder.Result result,
+                                 @NotNull String selectCodeFirstMessageKey,
                                  @NotNull Consumer<String> infoCallback,
                                  @NotNull Consumer<String> errorCallback) {
         String messageKey = Objects.requireNonNull(
@@ -21,11 +22,16 @@ final class SelectionReferenceFailureHandler {
                 "Failure result must contain a message key"
         );
 
-        String message = ClaudeCodeGuiBundle.message(messageKey);
         if (SELECT_CODE_FIRST_KEY.equals(messageKey)) {
-            infoCallback.accept(message);
+            infoCallback.accept(ClaudeCodeGuiBundle.message(selectCodeFirstMessageKey));
             return;
         }
-        errorCallback.accept(message);
+        errorCallback.accept(ClaudeCodeGuiBundle.message(messageKey));
+    }
+
+    static void showBuildFailure(@NotNull SelectionReferenceBuilder.Result result,
+                                 @NotNull Consumer<String> infoCallback,
+                                 @NotNull Consumer<String> errorCallback) {
+        showBuildFailure(result, SELECT_CODE_FIRST_KEY, infoCallback, errorCallback);
     }
 }

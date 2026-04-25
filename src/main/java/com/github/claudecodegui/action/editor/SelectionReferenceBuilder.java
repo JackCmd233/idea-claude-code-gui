@@ -7,6 +7,8 @@ import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
+
 public class SelectionReferenceBuilder {
 
     public @NotNull Result build(@Nullable Editor editor, @Nullable VirtualFile file) {
@@ -57,8 +59,8 @@ public class SelectionReferenceBuilder {
             this.messageKey = messageKey;
         }
 
-        public static Result success(String reference) {
-            return new Result(true, reference, null);
+        public static Result success(@NotNull String reference) {
+            return new Result(true, Objects.requireNonNull(reference, "reference"), null);
         }
 
         public static Result failure(String messageKey) {
