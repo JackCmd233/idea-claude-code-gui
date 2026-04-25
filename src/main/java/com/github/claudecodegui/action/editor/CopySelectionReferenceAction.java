@@ -33,8 +33,8 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
     public CopySelectionReferenceAction() {
         this(
                 new SelectionReferenceBuilder(),
-                ClaudeCodeGuiBundle.message("action.copyAiReference.text"),
-                ClaudeCodeGuiBundle.message("action.copyAiReference.description")
+                "Copy AI Reference",
+                "Copy the selected code location as an AI reference"
         );
     }
 
