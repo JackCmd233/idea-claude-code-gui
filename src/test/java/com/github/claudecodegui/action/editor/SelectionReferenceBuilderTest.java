@@ -2,7 +2,10 @@ package com.github.claudecodegui.action.editor;
 
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.SelectionModel;
+import com.intellij.openapi.fileTypes.FileTypes;
+import com.intellij.testFramework.LightVirtualFile;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -37,7 +40,15 @@ public class SelectionReferenceBuilderTest {
         );
 
         Assert.assertTrue(result.isSuccess());
-        Assert.assertEquals("@D:\\Code\\demo\\Foo.java#L12-L24", result.getReference());
+        Assert.assertEquals("@D:\\Code\\demo\\Foo.java#L12-24", result.getReference());
+    }
+
+    @Test
+    public void selectionEndingAtNextLineColumnZeroUsesPreviousLine() {
+        SelectionReferenceBuilder.Result result = builder.build(createEditor("selected", 12, 24, 0), createFile("D:\\Code\\demo\\Foo.java"));
+
+        Assert.assertTrue(result.isSuccess());
+        Assert.assertEquals("@D:\\Code\\demo\\Foo.java#L12-23", result.getReference());
     }
 
     @Test
@@ -77,7 +88,7 @@ public class SelectionReferenceBuilderTest {
         Assert.assertEquals("send.cannotGetFile", fileResult.getMessageKey());
     }
 
-    private static Editor createEditor(String selectedText, int startLineNumber, int endLineNumber) {
+    private static Editor createEditor(String selectedText, int startLineNumber, int endLineNumber, int endColumn) {
         SelectionModel selectionModel = (SelectionModel) Proxy.newProxyInstance(
                 SelectionModel.class.getClassLoader(),
                 new Class[]{SelectionModel.class},
@@ -91,17 +102,32 @@ public class SelectionReferenceBuilderTest {
         return (Editor) Proxy.newProxyInstance(
                 Editor.class.getClassLoader(),
                 new Class[]{Editor.class},
-                new EditorHandler(selectionModel, document)
+                new EditorHandler(selectionModel, document, endColumn)
         );
+    }
+
+    private static Editor createEditor(String selectedText, int startLineNumber, int endLineNumber) {
+        return createEditor(selectedText, startLineNumber, endLineNumber, 1);
+    }
+
+    private static com.intellij.openapi.vfs.VirtualFile createFile(String path) {
+        return new LightVirtualFile("Foo.java", FileTypes.PLAIN_TEXT, "") {
+            @Override
+            public String getPath() {
+                return path;
+            }
+        };
     }
 
     private static final class EditorHandler implements InvocationHandler {
         private final SelectionModel selectionModel;
         private final Document document;
+        private final int endColumn;
 
-        private EditorHandler(SelectionModel selectionModel, Document document) {
+        private EditorHandler(SelectionModel selectionModel, Document document, int endColumn) {
             this.selectionModel = selectionModel;
             this.document = document;
+            this.endColumn = endColumn;
         }
 
         @Override
@@ -112,6 +138,9 @@ public class SelectionReferenceBuilderTest {
             }
             if ("getDocument".equals(name)) {
                 return document;
+            }
+            if ("offsetToLogicalPosition".equals(name)) {
+                return new LogicalPosition(0, endColumn);
             }
             if ("isDisposed".equals(name)) {
                 return false;
