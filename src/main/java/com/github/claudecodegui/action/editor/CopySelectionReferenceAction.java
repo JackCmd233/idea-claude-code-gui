@@ -5,6 +5,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -70,11 +71,11 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
             ReadAction
                     .nonBlocking(() -> buildSelectionReference(e))
                     .finishOnUiThread(
-                            com.intellij.openapi.application.ModalityState.defaultModalityState(),
+                            ModalityState.defaultModalityState(),
                             result -> handleBuildResult(project, result)
                     )
                     .submit(AppExecutorUtil.getAppExecutorService());
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             showError(project, ClaudeCodeGuiBundle.message("send.failed", ex.getMessage()));
             LOG.error("Failed to copy selection reference", ex);
         }
@@ -111,7 +112,7 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
 
         try {
             clipboardWriter.accept(result.getReference());
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             LOG.warn("Failed to write selection reference to clipboard", ex);
             showClipboardWriteFailure(project, ClaudeCodeGuiBundle.message("send.failed", ex.getMessage()));
         }
