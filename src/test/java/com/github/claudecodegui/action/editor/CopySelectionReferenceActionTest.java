@@ -14,7 +14,9 @@ import com.intellij.openapi.actionSystem.TimerListener;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.SelectionModel;
-import com.intellij.openapi.project.Project;
+import com.intellij.openapi.fileTypes.FileTypes;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.testFramework.LightVirtualFile;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -72,7 +74,7 @@ public class CopySelectionReferenceActionTest {
 
     @Test
     public void updateShowsActionForNonBlankSelectionOnly() {
-        AnActionEvent event = createEvent(createDataContext(createProject(), createEditor("selected")));
+        AnActionEvent event = createEvent(createDataContext(createEditor("selected"), null));
 
         action.update(event);
 
@@ -82,7 +84,7 @@ public class CopySelectionReferenceActionTest {
 
     @Test
     public void updateHidesActionForBlankSelection() {
-        AnActionEvent event = createEvent(createDataContext(createProject(), createEditor("   ")));
+        AnActionEvent event = createEvent(createDataContext(createEditor("   "), null));
 
         action.update(event);
 
@@ -90,28 +92,39 @@ public class CopySelectionReferenceActionTest {
         Assert.assertFalse(event.getPresentation().isEnabled());
     }
 
+    @Test
+    public void buildSelectionReferenceUsesVirtualFileWithoutProject() {
+        VirtualFile virtualFile = createFile("D:\\Code\\demo\\Foo.java");
+        Editor editor = createEditor("selected");
+        RecordingSelectionReferenceBuilder builder = new RecordingSelectionReferenceBuilder();
+        CopySelectionReferenceAction testAction = new CopySelectionReferenceAction(
+                builder,
+                "Copy AI Reference",
+                "Copy the selected code location as an AI reference"
+        );
+        AnActionEvent event = createEvent(createDataContext(editor, virtualFile));
+
+        SelectionReferenceBuilder.Result result = testAction.buildSelectionReference(event);
+
+        Assert.assertTrue(result.isSuccess());
+        Assert.assertSame(editor, builder.editor);
+        Assert.assertSame(virtualFile, builder.file);
+    }
+
     private static AnActionEvent createEvent(DataContext dataContext) {
         return new AnActionEvent(null, dataContext, "TestPlace", new Presentation(), new TestActionManager(), 0);
     }
 
-    private static DataContext createDataContext(Project project, Editor editor) {
+    private static DataContext createDataContext(Editor editor, VirtualFile virtualFile) {
         return dataId -> {
-            if (CommonDataKeys.PROJECT.getName().equals(dataId)) {
-                return project;
-            }
             if (CommonDataKeys.EDITOR.getName().equals(dataId)) {
                 return editor;
             }
+            if (CommonDataKeys.VIRTUAL_FILE.getName().equals(dataId)) {
+                return virtualFile;
+            }
             return null;
         };
-    }
-
-    private static Project createProject() {
-        return (Project) Proxy.newProxyInstance(
-                Project.class.getClassLoader(),
-                new Class[]{Project.class},
-                new SimpleHandler("test-project")
-        );
     }
 
     private static Editor createEditor(String selectedText) {
@@ -130,6 +143,15 @@ public class CopySelectionReferenceActionTest {
                     return defaultValue(method.getReturnType(), proxy, args);
                 }
         );
+    }
+
+    private static VirtualFile createFile(String path) {
+        return new LightVirtualFile("Foo.java", FileTypes.PLAIN_TEXT, "") {
+            @Override
+            public String getPath() {
+                return path;
+            }
+        };
     }
 
     private static Object defaultValue(Class<?> returnType, Object proxy, Object[] args) {
@@ -183,19 +205,15 @@ public class CopySelectionReferenceActionTest {
         }
     }
 
-    private static final class SimpleHandler implements InvocationHandler {
-        private final String text;
-
-        private SimpleHandler(String text) {
-            this.text = text;
-        }
+    private static final class RecordingSelectionReferenceBuilder extends SelectionReferenceBuilder {
+        private Editor editor;
+        private VirtualFile file;
 
         @Override
-        public Object invoke(Object proxy, Method method, Object[] args) {
-            if ("getName".equals(method.getName())) {
-                return text;
-            }
-            return defaultValue(method.getReturnType());
+        public Result build(Editor editor, VirtualFile file) {
+            this.editor = editor;
+            this.file = file;
+            return Result.success("@D:\\Code\\demo\\Foo.java#L1");
         }
     }
 

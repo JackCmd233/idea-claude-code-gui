@@ -10,7 +10,6 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.SelectionModel;
-import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -54,13 +53,9 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project project = e.getProject();
-        if (project == null) {
-            return;
-        }
-
         try {
             ReadAction
-                    .nonBlocking(() -> selectionReferenceBuilder.build(e.getData(CommonDataKeys.EDITOR), getSelectedFile(project)))
+                    .nonBlocking(() -> buildSelectionReference(e))
                     .finishOnUiThread(
                             com.intellij.openapi.application.ModalityState.defaultModalityState(),
                             result -> handleBuildResult(project, result)
@@ -74,9 +69,8 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
         Editor editor = e.getData(CommonDataKeys.EDITOR);
-        if (project == null || editor == null) {
+        if (editor == null) {
             e.getPresentation().setEnabledAndVisible(false);
             return;
         }
@@ -85,6 +79,11 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
         String selectedText = selectionModel.getSelectedText();
         boolean hasSelection = selectedText != null && !selectedText.trim().isEmpty();
         e.getPresentation().setEnabledAndVisible(hasSelection);
+    }
+
+    @NotNull SelectionReferenceBuilder.Result buildSelectionReference(@NotNull AnActionEvent e) {
+        VirtualFile virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        return selectionReferenceBuilder.build(e.getData(CommonDataKeys.EDITOR), virtualFile);
     }
 
     void handleBuildResult(@Nullable Project project, @NotNull SelectionReferenceBuilder.Result result) {
@@ -111,14 +110,6 @@ public class CopySelectionReferenceAction extends AnAction implements DumbAware 
 
     private static void writeToClipboard(@Nullable String content) {
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(content != null ? content : ""), null);
-    }
-
-    private static @Nullable VirtualFile getSelectedFile(@NotNull Project project) {
-        VirtualFile[] selectedFiles = FileEditorManager.getInstance(project).getSelectedFiles();
-        if (selectedFiles.length == 0) {
-            return null;
-        }
-        return selectedFiles[0];
     }
 
     private void showBuildFailure(@Nullable Project project, @Nullable String messageKey) {
