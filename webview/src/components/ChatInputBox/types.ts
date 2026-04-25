@@ -340,6 +340,11 @@ export const CLAUDE_MODELS: ModelInfo[] = [
  */
 export const CODEX_MODELS: ModelInfo[] = [
   {
+    id: 'gpt-5.5',
+    label: 'GPT-5.5',
+    description: 'Latest frontier model with stronger capabilities.',
+  },
+  {
     id: 'gpt-5.4',
     label: 'GPT-5.4',
     description: 'Latest frontier model with enhanced capabilities.',

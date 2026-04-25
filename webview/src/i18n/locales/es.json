@@ -146,8 +146,16 @@
         "level6": "Máximo (140%)"
       },
       "editorFont": {
-        "label": "Fuente (sigue la fuente del editor)",
-        "hint": "No editable aquí. Para modificar, ve a Configuración de IDEA → Editor → Fuente (reinicia IDEA para que la fuente del plugin surta efecto)"
+        "label": "Fuente",
+        "hint": "Aquí cambias la fuente de la interfaz del plugin; el tamaño y el interlineado siguen al editor.",
+        "followOption": "Seguir al editor ({{font}})",
+        "customOption": "Archivo de fuente personalizado",
+        "customPathLabel": "Ruta del archivo de fuente",
+        "customPathPlaceholder": "Elige o escribe la ruta de un archivo .ttf / .otf",
+        "browse": "Examinar",
+        "warningUnavailable": "La fuente no está disponible; se usa la fuente del editor",
+        "statusFollowEditor": "Actualmente se usa la fuente del editor: {{font}}",
+        "statusCustom": "Actualmente se usa la fuente personalizada: {{font}}"
       },
       "streaming": {
         "label": "Streaming",
@@ -618,6 +626,9 @@
     "cancelEditButton": "Cancelar",
     "titleTooLong": "Título demasiado largo (máximo 50 caracteres)",
     "titleUpdated": "Título actualizado",
+    "copySessionId": "Copiar ID de sesión para CLI resume",
+    "sessionIdCopied": "ID de sesión copiado",
+    "copyFailed": "Error al copiar",
     "timeAgo": {
       "yearsAgo": "hace años",
       "monthsAgo": "hace meses",
@@ -1150,6 +1161,10 @@
       "gpt53codex": {
         "label": "GPT-5.3-Codex",
         "description": "Último modelo de codificación agéntico con capacidades mejoradas."
+      },
+      "gpt55": {
+        "label": "GPT-5.5",
+        "description": "Modelo frontera más reciente con capacidades reforzadas."
       },
       "gpt54": {
         "label": "GPT-5.4",
