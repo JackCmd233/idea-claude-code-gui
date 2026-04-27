@@ -78,18 +78,34 @@ export const appendOptimisticMessageIfMissing = (
   if (!lastPrev?.isOptimistic) return nextList;
 
   const optimisticMsg = lastPrev;
+  const optimisticText = getUserMessageComparableContent(optimisticMsg);
+  const optimisticTime = optimisticMsg.timestamp
+    ? new Date(optimisticMsg.timestamp).getTime()
+    : Number.NaN;
 
   const matchFn = (m: ClaudeMessage) =>
     m.type === 'user' &&
-    (m.content === optimisticMsg.content ||
-      m.content === (optimisticMsg.raw as any)?.message?.content?.[0]?.text) &&
+    getUserMessageComparableContent(m) === optimisticText &&
     m.timestamp &&
     optimisticMsg.timestamp &&
     Math.abs(
       new Date(m.timestamp).getTime() - new Date(optimisticMsg.timestamp).getTime(),
     ) < OPTIMISTIC_MESSAGE_TIME_WINDOW;
 
-  const matchedIndex = nextList.findIndex(matchFn);
+  let matchedIndex = nextList.findIndex(matchFn);
+  if (matchedIndex < 0 && optimisticText) {
+    for (let i = nextList.length - 1; i >= 0; i -= 1) {
+      const candidate = nextList[i];
+      if (candidate?.type !== 'user') continue;
+      if (getUserMessageComparableContent(candidate) !== optimisticText) continue;
+      const candidateTime = candidate.timestamp ? new Date(candidate.timestamp).getTime() : Number.NaN;
+      if (Number.isFinite(optimisticTime) && Number.isFinite(candidateTime) && candidateTime < optimisticTime) {
+        continue;
+      }
+      matchedIndex = i;
+      break;
+    }
+  }
   if (matchedIndex < 0) {
     return [...nextList, optimisticMsg];
   }
@@ -123,6 +139,19 @@ export const appendOptimisticMessageIfMissing = (
   }
 
   return nextList;
+};
+
+const getUserMessageComparableContent = (message: ClaudeMessage): string => {
+  if (message.type !== 'user') return message.content || '';
+  const rawContent = (message.raw as any)?.message?.content ?? (message.raw as any)?.content;
+  if (!Array.isArray(rawContent)) {
+    return message.content || '';
+  }
+  const rawText = rawContent
+    .filter((block: any) => block && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string')
+    .map((block: any) => block.text)
+    .join('\n');
+  return rawText || message.content || '';
 };
 
 /**

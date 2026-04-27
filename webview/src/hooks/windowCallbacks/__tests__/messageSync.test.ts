@@ -210,16 +210,34 @@ describe('appendOptimisticMessageIfMissing', () => {
     expect(result[0]).toBe(backendMsg);
   });
 
-  it('appends when timestamps exceed the time window', () => {
+  it('matches the latest backend user message by content even when confirmation is delayed', () => {
     const oldTs = new Date(Date.now() - OPTIMISTIC_MESSAGE_TIME_WINDOW - 1000).toISOString();
     const newTs = new Date().toISOString();
-    const optimistic = makeUserMsg('hello', { isOptimistic: true, timestamp: oldTs });
-    const backendMsg = makeUserMsg('hello', { timestamp: newTs });
+    const optimistic = makeUserMsg('slow confirmation', { isOptimistic: true, timestamp: oldTs });
+    const backendMsg = makeUserMsg('slow confirmation', { timestamp: newTs });
     const prev = [optimistic];
     const next = [backendMsg];
 
     const result = appendOptimisticMessageIfMissing(prev, next);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(backendMsg);
+  });
+
+  it('matches delayed optimistic text against the latest backend user when older history has same content', () => {
+    const optimistic = makeUserMsg('repeatable prompt', {
+      isOptimistic: true,
+      timestamp: new Date(Date.now() - OPTIMISTIC_MESSAGE_TIME_WINDOW - 1000).toISOString(),
+    });
+    const olderBackend = makeUserMsg('repeatable prompt', { timestamp: '2026-04-26T00:00:00.000Z' });
+    const latestBackend = makeUserMsg('repeatable prompt', { timestamp: new Date().toISOString() });
+
+    const result = appendOptimisticMessageIfMissing(
+      [olderBackend, optimistic],
+      [olderBackend, makeAssistantMsg('old answer'), latestBackend],
+    );
+
+    expect(result).toHaveLength(3);
+    expect(result[2]).toBe(latestBackend);
   });
 
   it('merges attachment blocks from optimistic message into matched backend message', () => {
