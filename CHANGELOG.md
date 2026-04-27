@@ -1,3 +1,41 @@
+##### **2026年4月27日（v0.4.1-Alpha1）**
+
+English:
+
+✨ Features
+- Show Agent process details: surface subagent runtime metadata, tool call statistics, and final output in the webview; load Claude Code sidechain subagent logs from history
+- Restore persisted Codex session history: load and normalize user, assistant, and tool call records from disk for chat replay when a Codex tab is restored
+- Add runtime provider switcher: add a provider submenu inside the chat input configuration to switch between Claude and Codex at runtime with localized labels
+- Add multi-provider Prompt Enhancer with settings UI: route prompt enhancement to Claude or Codex based on user config; add per-provider model selection, availability detection, and auto/manual resolution in settings
+- Add Commit AI provider configuration: configure the AI provider and model used for commit message generation from the settings panel
+- Add clickable file and class links in Markdown: detect file paths, Java FQCNs, and URLs in assistant messages; support absolute/relative/project-style paths with line numbers, fuzzy filename matching, and Java class navigation (resolves #557, #853, #702, #514)
+
+🐛 Fixes
+- Fix plugin startup crash on IDEs without the reworked terminal context menu group: move action registration to guarded runtime code so older IDEs load cleanly while newer IDEs retain the menu entry
+- Fix scroll position jump in message list: extract `subagentHistories` and `currentSessionId` into separate React contexts so async state updates no longer trigger full re-render cascades that interfere with scroll tracking
+
+🔧 Improvements
+- Make history cleanup safer and faster: support multi-select batch deletion of visible sessions; treat files disappearing mid-scan as a recoverable condition to avoid noisy failures during concurrent cleanup
+
+中文：
+
+✨ Features
+- 展示 Agent 进程详情：在 webview 中呈现子 Agent 运行时元数据、工具调用统计和最终输出；同时从历史记录中加载 Claude Code sidechain 子 Agent 日志
+- 恢复 Codex 持久化会话历史：标签页恢复时从磁盘加载并规范化用户、助手和工具调用记录，支持完整的聊天回放
+- 新增运行时 Provider 切换器：在聊天输入配置中添加 Provider 子菜单，支持在 Claude 和 Codex 之间实时切换，并提供本地化标签
+- 新增多 Provider Prompt 增强功能及设置 UI：根据用户配置将 Prompt 增强路由到 Claude 或 Codex；在设置中支持按 Provider 选择模型、检测可用性，以及自动/手动解析逻辑
+- 新增 Commit AI Provider 配置：在设置面板中配置用于生成提交信息的 AI Provider 和模型
+- 新增 Markdown 中的可点击文件与类链接：识别助手消息中的文件路径、Java 全限定类名和 URL；支持绝对/相对/项目风格路径（含行号）、模糊文件名匹配和 Java 类导航（解决 #557、#853、#702、#514）
+
+🐛 Fixes
+- 修复旧版 IDE 上因缺少重构后的 Terminal 右键菜单组导致插件启动崩溃的问题：将动作注册移至运行时守卫代码，旧版 IDE 可正常加载，新版 IDE 保留菜单入口
+- 修复消息列表滚动位置跳动：将 `subagentHistories` 和 `currentSessionId` 提取到独立的 React Context，避免异步状态更新触发全量重渲染，干扰滚动容器的位置追踪
+
+🔧 Improvements
+- 提升历史记录清理的安全性与效率：支持多选批量删除可见会话；将扫描过程中文件消失的情况视为可恢复错误，避免并发清理时产生噪音失败
+
+---
+
 ##### **2026年4月24日（v0.4）**
 
 English:
