@@ -1,6 +1,7 @@
 package com.github.claudecodegui.handler.history;
 
 import com.github.claudecodegui.handler.core.HandlerContext;
+import com.github.claudecodegui.util.PathUtils;
 import com.github.claudecodegui.util.PlatformUtils;
 import com.github.claudecodegui.util.JsUtils;
 import com.google.gson.Gson;
@@ -158,7 +159,7 @@ class SubagentHistoryService {
         if (basePath == null || basePath.isEmpty()) {
             throw new IllegalStateException("Project base path is null");
         }
-        return basePath.replace('/', '-');
+        return PathUtils.sanitizePath(basePath);
     }
 
     private JsonArray readJsonl(Path file) throws IOException {
