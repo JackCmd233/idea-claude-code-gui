@@ -7,6 +7,7 @@ import './i18n/config';
 import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
+import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
 import type { UiFontConfig } from './types/uiFontConfig';
 
@@ -550,6 +551,12 @@ if (typeof window !== 'undefined' && !window.showPlanApprovalDialog) {
   };
 }
 
+if (typeof window !== 'undefined') {
+  window.updateLinkifyCapabilities = (json: string) => {
+    applyLinkifyCapabilitiesPayload(json);
+  };
+}
+
 // Render the React application
 ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
   <ErrorBoundary>
@@ -596,4 +603,7 @@ waitForBridge(() => {
   // Ensure SDK dependency status is fetched on initial load (not only after opening Settings).
   console.log('[Main] Requesting dependency status');
   sendBridgeEvent('get_dependency_status');
+
+  console.log('[Main] Requesting linkify capabilities');
+  sendBridgeEvent('get_linkify_capabilities');
 });
