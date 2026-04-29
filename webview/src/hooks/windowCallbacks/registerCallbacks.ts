@@ -39,6 +39,9 @@ function areSubagentMessagesEquivalent(previousMessages?: unknown[], nextMessage
   }
   if (previousMessages.length !== nextMessages.length) return false;
 
+  // NOTE: Uses JSON.stringify for shallow deep-equality check.
+  // Acceptable for cache invalidation; key order divergence between code paths
+  // produces false negatives that just trigger re-render (safe degradation).
   try {
     return JSON.stringify(previousMessages) === JSON.stringify(nextMessages);
   } catch {

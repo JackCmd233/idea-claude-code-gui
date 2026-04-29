@@ -9,6 +9,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -224,8 +226,37 @@ public class FontConfigService {
         if (canonicalFile.length() <= 0) {
             return new ValidationResult(false, "Font file is empty", null);
         }
+        if (!looksLikeFontFile(canonicalFile)) {
+            return new ValidationResult(false, "File does not appear to be a valid font file", null);
+        }
 
         return new ValidationResult(true, null, null);
+    }
+
+    /**
+     * Lightweight magic-number sniff for common font formats.
+     * Avoids the cost of {@code Font.createFont} full parsing while still rejecting
+     * obviously bogus files (random binaries, text files renamed to .ttf, etc.).
+     */
+    private static boolean looksLikeFontFile(File file) {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] header = new byte[4];
+            if (fis.read(header) < 4) {
+                return false;
+            }
+            int magic = ((header[0] & 0xFF) << 24)
+                      | ((header[1] & 0xFF) << 16)
+                      | ((header[2] & 0xFF) << 8)
+                      | (header[3] & 0xFF);
+            return magic == 0x00010000  // TTF (TrueType)
+                || magic == 0x4F54544F  // 'OTTO' (OpenType with CFF)
+                || magic == 0x774F4646  // 'wOFF' (WOFF)
+                || magic == 0x774F4632  // 'wOF2' (WOFF2)
+                || magic == 0x74746366  // 'ttcf' (TrueType Collection)
+                || magic == 0x74727565; // 'true' (legacy Apple TrueType)
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**

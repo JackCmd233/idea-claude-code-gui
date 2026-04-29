@@ -87,8 +87,14 @@ final class ReplayDeduplicator {
             consumed++;
         }
         // Fallback: if offset-based matching fails, check if the delta matches the tail
-        // of the replay content (handles offset drift after partial syncs)
-        if (consumed == 0 && replayContent.endsWith(delta)) {
+        // of the replay content (handles offset drift after partial syncs).
+        // Guard with a length/offset check and ensure the matched tail starts at or
+        // beyond the synced offset, so we do not silently swallow legitimate repeated
+        // deltas that happen to share a suffix with already-synced replay content.
+        if (consumed == 0
+                && replayContent.length() > safeOffset
+                && replayContent.endsWith(delta)
+                && replayContent.lastIndexOf(delta) >= safeOffset) {
             replayIndex = replayContent.length() - delta.length();
             consumed = delta.length();
         } else if (consumed == 0) {

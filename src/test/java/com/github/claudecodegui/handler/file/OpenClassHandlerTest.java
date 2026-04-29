@@ -26,11 +26,24 @@ public class OpenClassHandlerTest {
 
     @Test
     public void rejectsInvalidClassExpressions() {
-        assertFalse(OpenClassHandler.isValidClassName("com.example.api"));
-        assertFalse(OpenClassHandler.isValidClassName("org.junit.jupiter.api"));
+        // Member references (#) and method invocations (()) are still rejected.
         assertFalse(OpenClassHandler.isValidClassName("com.github.foo.Bar#baz"));
         assertFalse(OpenClassHandler.isValidClassName("com.github.foo.Bar.baz()"));
+        // Leading digits in segments are rejected (covers e.g. "v1.2.3").
         assertFalse(OpenClassHandler.isValidClassName("v1.2.3"));
+        // Whitespace, single-segment identifiers, and empty input are rejected.
+        assertFalse(OpenClassHandler.isValidClassName("com.github foo.Bar"));
+        assertFalse(OpenClassHandler.isValidClassName("BarService"));
+        assertFalse(OpenClassHandler.isValidClassName(""));
+    }
+
+    @Test
+    public void acceptsKotlinAndDollarInnerClassExpressions() {
+        // Relaxed pattern: any dotted Java identifier with at least one '.',
+        // including '$' inner-class separators and lowercase last segments.
+        assertTrue(OpenClassHandler.isValidClassName("com.example.api"));
+        assertTrue(OpenClassHandler.isValidClassName("org.junit.jupiter.api"));
+        assertTrue(OpenClassHandler.isValidClassName("com.github.foo.Outer$Inner"));
     }
 
     @Test
@@ -45,11 +58,11 @@ public class OpenClassHandlerTest {
             }
         );
 
-        handler.handleOpenClass("com.example.api");
+        handler.handleOpenClass("com.github.foo.Bar#baz");
 
         assertFalse(invoked.get());
         assertEquals(
-            "Cannot open class: invalid class name (com.example.api)",
+            "Cannot open class: invalid class name (com.github.foo.Bar#baz)",
             jsCallback.awaitLastMessage()
         );
     }

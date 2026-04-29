@@ -126,10 +126,12 @@ public final class UiFontResourceService {
     ) {
         boolean isCurrent() {
             File file = path.toFile();
+            // Tolerate up to 2s of mtime drift to absorb cross-FS precision differences
+            // (e.g., FAT/exFAT 2s granularity, network filesystem rounding).
             return file.isFile()
                     && file.canRead()
                     && file.length() == length
-                    && file.lastModified() == lastModified;
+                    && Math.abs(file.lastModified() - lastModified) < 2000L;
         }
     }
 }

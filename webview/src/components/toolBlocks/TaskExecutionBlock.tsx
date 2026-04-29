@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { normalizeToolName } from '../../utils/toolConstants';
 import { sendBridgeEvent } from '../../utils/bridge';
-import { useSubagentHistoryGetter, useSessionId, useGetToolResultRaw } from '../../contexts/SubagentContext';
+import { useSubagentHistoryGetter, useSessionId, useGetToolResultRaw, type GetToolResultRawFn } from '../../contexts/SubagentContext';
 import SubagentProcessDetails from '../StatusPanel/SubagentProcessDetails';
 
 interface TaskExecutionBlockProps {
@@ -88,7 +88,7 @@ function parseSpawnAgentMeta(input: ToolInput, result?: ToolResultBlock | null):
 }
 
 function parseAgentToolMeta(
-  getToolResultRaw: (toolUseId: string) => Record<string, unknown> | null,
+  getToolResultRaw: GetToolResultRawFn,
   toolUseId?: string,
 ): {
   agentId?: string;

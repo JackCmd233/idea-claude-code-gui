@@ -8,6 +8,7 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
+import { installRuntimeProviderDispatchers } from './utils/runtimeProviderCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
 import type { UiFontConfig } from './types/uiFontConfig';
 
@@ -21,6 +22,12 @@ if (!import.meta.env.DEV) {
   console.warn = noop;
   console.error = noop;
 }
+
+// Install the runtime provider dispatcher exactly once so that every
+// consumer (Settings, RuntimeProviderSelect, …) receives provider events
+// through a deterministic subscriber registry instead of overriding
+// `window.update*Provider*` callbacks ad-hoc.
+installRuntimeProviderDispatchers();
 
 function createBridgeHeartbeatStarter() {
   let started = false;
@@ -612,6 +619,5 @@ waitForBridge(() => {
   console.log('[Main] Requesting dependency status');
   sendBridgeEvent('get_dependency_status');
 
-  console.log('[Main] Requesting linkify capabilities');
   sendBridgeEvent('get_linkify_capabilities');
 });

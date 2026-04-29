@@ -19,9 +19,12 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -97,7 +100,7 @@ class OpenFileHandler {
             } catch (Exception e) {
                 LOG.error("Failed to open file: " + e.getMessage(), e);
             }
-        });
+        }, AppExecutorUtil.getAppExecutorService());
     }
 
     /**
@@ -140,6 +143,7 @@ class OpenFileHandler {
     private FileResolutionResult resolveFile(String actualPath) {
         File directFile = normalizeExistingFile(new File(actualPath));
         if (directFile != null) {
+            warnIfOutsideProjectRoot(directFile);
             return new FileResolutionResult(directFile, null);
         }
 
@@ -150,6 +154,7 @@ class OpenFileHandler {
                 LOG.info("Detected MSYS2 path, converted to Windows path: " + convertedPath);
                 File convertedFile = normalizeExistingFile(new File(convertedPath));
                 if (convertedFile != null) {
+                    warnIfOutsideProjectRoot(convertedFile);
                     return new FileResolutionResult(convertedFile, null);
                 }
                 resolvedPath = convertedPath;
@@ -255,7 +260,8 @@ class OpenFileHandler {
      * "src/utils/linkify.ts" -> "linkify.ts"
      * "linkify.ts" -> "linkify.ts"
      */
-    private static String extractFileName(String path) {
+    // VisibleForTesting
+    static String extractFileName(String path) {
         if (path == null || path.isBlank()) {
             return null;
         }
@@ -274,7 +280,8 @@ class OpenFileHandler {
      * "src/utils/linkify.ts" -> "utils/linkify.ts"
      * Used to find files that match the directory structure hint.
      */
-    private static String extractPathSuffix(String path) {
+    // VisibleForTesting
+    static String extractPathSuffix(String path) {
         if (path == null || path.isBlank()) {
             return null;
         }
@@ -388,6 +395,31 @@ class OpenFileHandler {
         } catch (IOException e) {
             File absoluteFile = candidate.getAbsoluteFile();
             return absoluteFile.exists() && absoluteFile.isFile() ? absoluteFile : null;
+        }
+    }
+
+    /**
+     * Log a warning when an absolute path resolves outside the current project root.
+     * Non-breaking: the file is still opened, but the audit trail records the access.
+     */
+    private void warnIfOutsideProjectRoot(File resolvedFile) {
+        try {
+            Project project = context.getProject();
+            if (project == null || project.isDisposed()) {
+                return;
+            }
+            String basePath = project.getBasePath();
+            if (basePath == null || basePath.isBlank()) {
+                return;
+            }
+            Path projectRoot = Paths.get(basePath).toAbsolutePath().normalize();
+            Path resolvedPath = resolvedFile.toPath().toAbsolutePath().normalize();
+            if (!resolvedPath.startsWith(projectRoot)) {
+                LOG.warn("Opening file outside project root: " + resolvedPath);
+            }
+        } catch (Exception e) {
+            // Best-effort audit logging; never block file open on warning failures.
+            LOG.debug("Failed to evaluate project root scope: " + e.getMessage());
         }
     }
 

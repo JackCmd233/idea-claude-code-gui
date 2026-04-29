@@ -17,7 +17,7 @@ const SessionIdContext = createContext<SessionIdContextValue>({
   currentSessionId: null,
 });
 
-type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
+export type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
 
 const ToolResultRawContext = createContext<GetToolResultRawFn>(() => null);
 

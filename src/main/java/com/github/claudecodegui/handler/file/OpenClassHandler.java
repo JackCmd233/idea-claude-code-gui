@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -19,8 +20,11 @@ import java.util.regex.Pattern;
 public class OpenClassHandler {
 
     private static final Logger LOG = Logger.getInstance(OpenClassHandler.class);
+    // Accepts dotted Java identifiers; requires at least one '.', allows '$' for
+    // inner classes, and rejects whitespace, '#', and '(' via the showError guards
+    // in isValidClassName().
     private static final Pattern JAVA_FQCN_PATTERN = Pattern.compile(
-        "^[a-z_][a-z0-9_]*(?:\\.[a-z_][a-z0-9_]*)*\\.[A-Z][A-Za-z0-9_]*(?:\\.[A-Z][A-Za-z0-9_]*)*$"
+        "^[a-zA-Z_$][\\w$]*(?:\\.[a-zA-Z_$][\\w$]*)+$"
     );
     private static final Method NAVIGATE_METHOD = loadNavigateMethod();
 
@@ -92,7 +96,7 @@ public class OpenClassHandler {
             return;
         }
 
-        CompletableFuture.runAsync(() -> executeNavigation(project, trimmed));
+        CompletableFuture.runAsync(() -> executeNavigation(project, trimmed), AppExecutorUtil.getAppExecutorService());
     }
 
     void executeNavigation(Project project, String fqcn) {
